@@ -13,13 +13,14 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
         uint64 maxUseTimes;
         uint64 usedTimes;
         bool disable; 
+        bool whiteList;
         bool skuLimit;
         uint64[] skuIds;
     }
 
     event RareshopSKUCreated(address indexed owner, address indexed collectionAddress, string name, string brandName);
 
-    event RareshopCouponCreated(uint64 indexed couponId, uint64 indexed value, uint64 indexed maxUseTimes,         uint64 startTime, uint64 endTime, bool skuLimit, address[] skuAddresses);
+    event RareshopCouponCreated(uint64 indexed couponId, uint64 indexed value, uint64 indexed maxUseTimes,         uint64 startTime, uint64 endTime, bool skuLimit);
     event RareshopCouponUsed(uint64 indexed couponId, address indexed user, address indexed sku, uint64 usedTimes);
     event RareshopCouponDeleted(uint64[] indexed couponIds);
 
@@ -34,6 +35,7 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
     mapping (address => uint64) public skuContractIds;
 
     mapping (uint64 => Coupon) public coupons;
+    mapping (uint64 => mapping(address => bool)) public couponWhiteList;
     mapping (address => mapping (uint64 => uint64)) public usedCoupons;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -85,10 +87,11 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
         return skuCollection;
     }
 
-    function createCoupon(address[] memory _skuAddresses, uint64 _value, uint64 _startTime, uint64 _endTime, uint64 _maxUseTimes) external onlyOwner returns (uint64) {
+    function createCoupon(address[] memory _skuAddresses, address[] memory _whiteList, uint64 _value, uint64 _startTime, uint64 _endTime, uint64 _maxUseTimes) external onlyOwner returns (uint64) {
         require(_value > 0, "value must greater than 0");
         require(_maxUseTimes > 0, "maxUseTimes must greater than 0");
         require(_endTime == 0 || _endTime >= _startTime, "endTime must >= startTime");
+        require(_whiteList.length <= 200, "whiteList length exceed 200");
 
         uint64[] memory skuIds = new uint64[](_skuAddresses.length);
         bool skuLimit = false;
@@ -100,22 +103,25 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
             }
             skuLimit = true;
         }
+        bool whiteListEnable = _whiteList.length > 0;
+        for(uint64 i=0; i<_whiteList.length;i++){
+            couponWhiteList[nextCouponId][_whiteList[i]] = true;
+        }
 
-        Coupon memory newCoupon = Coupon(_value, _startTime, _endTime, _maxUseTimes, 0, false, skuLimit, skuIds);
+        Coupon memory newCoupon = Coupon(_value, _startTime, _endTime, _maxUseTimes, 0, false, whiteListEnable, skuLimit, skuIds);
         coupons[nextCouponId] = newCoupon;
-        emit RareshopCouponCreated(nextCouponId, _value, _maxUseTimes, _startTime, _endTime, skuLimit, _skuAddresses);
+        emit RareshopCouponCreated(nextCouponId, _value, _maxUseTimes, _startTime, _endTime, skuLimit);
         return nextCouponId++;
     }
 
     function useCoupon(address _user, uint64 _couponId, address _skuAddress) external returns (uint64 value){
         require(_couponId > 0 && _couponId < nextCouponId, "couponId not available");
-
         uint64 skuId = skuContractIds[_skuAddress];
         require(skuId > 0, "skuAddress not available");
         Coupon memory coupon = coupons[_couponId];
         require(!coupon.disable, "couponId not available");
-        require(coupon.startTime == 0 || coupon.startTime <= block.timestamp, "coupon time range not match");
-        require(coupon.endTime == 0 || coupon.endTime >= block.timestamp, "coupon time range not match");
+        require(!coupon.whiteList || couponWhiteList[_couponId][_user], "user not in whiteList");
+        require(coupon.startTime <= block.timestamp && coupon.endTime >= block.timestamp, "coupon time range not match");
 
         uint64 usedTimes = usedCoupons[_user][_couponId];
         require(usedTimes < coupon.maxUseTimes, "coupon already used up");
