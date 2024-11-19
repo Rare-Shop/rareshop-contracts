@@ -17,7 +17,7 @@ contract RareshopSKUContractScript is Script {
         // bytes memory extendData = abi.encode(feature);
 
         address uupsProxy =
-            Upgrades.deployUUPSProxy("RareshopSKUContract.sol", abi.encodeCall(RareshopSKUContract.initialize, (owner, "skuName", "skuSymbol", "")));
+            Upgrades.deployUUPSProxy("RareshopSKUContract.sol", abi.encodeCall(RareshopSKUContract.initialize, (owner, "skuName", "skuSymbol", "", "")));
 
         console.log("uupsProxy deploy at %s", uupsProxy);
 

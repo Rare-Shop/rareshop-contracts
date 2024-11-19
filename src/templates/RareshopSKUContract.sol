@@ -43,7 +43,6 @@ contract RareshopSKUContract is
         string cover;
         TimeRange mintTime;
         TimeRange exerciseTime;
-        Privilege privileges;
     }
 
     event RareshopSKUMinted(address user, uint256[] tokenIds, uint64 couponId, uint256 originPrice, uint256 finalPrice );
@@ -84,6 +83,7 @@ contract RareshopSKUContract is
         address _initialOwner, 
         string memory _name,
         string memory _symbol,
+        bytes calldata _configData,
         bytes calldata _extendData) external initializer {
         __ERC721_init(_name, _symbol);
         __Ownable_init(_initialOwner);
@@ -91,12 +91,12 @@ contract RareshopSKUContract is
         
         brandCollection = RareshopBrandContract(_msgSender());
         if(_extendData.length > 0) {
-            config = abi.decode(_extendData, (SKUConfig));
-            // for(uint64 i=1; i<= config.privileges.length;i++){
-                // Privilege memory p = config.privileges[i-1];
-                // privileges[i] = Privilege(p.name, p.description, p.postable);
-            // }
-            // maxPrivilegeId = config.privileges.length;
+            config = abi.decode(_configData, (SKUConfig));
+            Privilege[] memory initPrivileges = abi.decode(_extendData, (Privilege[]));
+            for(uint64 i=1; i<= initPrivileges.length;i++){
+                privileges[i] = initPrivileges[i-1];
+            }
+            maxPrivilegeId = initPrivileges.length;
         }
     }
 
