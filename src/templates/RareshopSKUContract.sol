@@ -6,8 +6,10 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/utils/Base64.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
 import "../interfaces/IERC7765.sol";
 import "../interfaces/IERC7765Metadata.sol";
 import "../interfaces/IMetadataRenderer.sol";
@@ -32,6 +34,8 @@ contract RareshopSKUContract is
     struct Privilege {
         string name;
         string description;
+        string imageUrl;
+        string usedImageUrl;
         bool postable;
     }
 
@@ -46,9 +50,6 @@ contract RareshopSKUContract is
     }
 
     event RareshopSKUMinted(address indexed user, uint256[] indexed tokenIds, uint64 indexed couponId, uint256 originPrice, uint256 finalPrice );
-
-    address public metadataRenderer;
-    address public privilegeMetadataRenderer;
 
     address public constant PAYMENT_RECEIPIENT_ADDRESS = 0xC0f068774D46ba26013677b179934Efd7bdefA3F;
     address public constant POSTAGE_RECEIPIENT_ADDRESS = 0xC0f068774D46ba26013677b179934Efd7bdefA3F;
@@ -282,36 +283,84 @@ contract RareshopSKUContract is
         privileges[_privilegeId].description = description;
     }
 
-    function setMetadataRenderer(address _metadataRenderer) external onlyOwner {
-        require(_metadataRenderer != address(0), "Invalid address");
-        metadataRenderer = _metadataRenderer;
-    }
     function tokenURI(
         uint256 _tokenId
     ) public view override returns (string memory) {
         _requireOwned(_tokenId);
-        return IMetadataRenderer(metadataRenderer).tokenURI(_tokenId);
+        return
+            string(
+                abi.encodePacked(
+                    "data:application/json;base64,",
+                    Base64.encode(bytes(tokenURIJSON(_tokenId)))
+                )
+            );
     }
 
-    function setPrivilegeMetadataRenderer(
-        address _privilegeMetadataRenderer
-    ) external onlyOwner {
-        require(_privilegeMetadataRenderer != address(0), "Invalid address");
-        privilegeMetadataRenderer = _privilegeMetadataRenderer;
+    function tokenURIJSON(uint256 _tokenId) public view returns (string memory) {
+        string memory result = "[";
+        for(uint64 privilegeId=1; privilegeId<maxPrivilegeId;privilegeId++){
+            bool privilegeUsed = this.hasBeenExercised(_tokenId, privilegeId);
+            string memory url = privilegeUsed ? privileges[privilegeId].usedImageUrl : privileges[privilegeId].imageUrl;
+            string memory privilegeJSON = string(
+                abi.encodePacked(
+                    "{",
+                    '"name": "',
+                    privileges[privilegeId].name,
+                    " #",
+                    Strings.toString(_tokenId),
+                    '",',
+                    '"description": "',
+                    privileges[privilegeId].description,
+                    '",',
+                    '"image": "',
+                    url,
+                    '",',
+                    '"privilegeUsed": "',
+                    privilegeUsed ? "true" : "false",
+                    '"}'
+                )
+            );
+            if(privilegeId > 1){
+                result = string(abi.encodePacked(result,",", privilegeJSON));
+            } else {
+                result = string(abi.encodePacked(result,privilegeJSON));   
+            }
+        }
+
+        return string(abi.encodePacked(result,"]"));
     }
 
     function privilegeURI(
         uint256 _privilegeId
-    )
-        external
-        view
-        override
-        checkPrivilegeId(_privilegeId)
-        returns (string memory)
-    {
+    ) external view override checkPrivilegeId(_privilegeId) returns (string memory) {
         return
-            IERC7765Metadata(privilegeMetadataRenderer).privilegeURI(
-                _privilegeId
+            string(
+                abi.encodePacked(
+                    "data:application/json;base64,",
+                    Base64.encode(bytes(privilegeURIJSON(_privilegeId)))
+                )
+            );
+    }
+
+    function privilegeURIJSON(
+        uint256 _privilegeId
+    ) public view returns (string memory) {
+        return
+            string(
+                abi.encodePacked(
+                    "{",
+                    '"name": "',
+                    privileges[_privilegeId].name,
+                    " #",
+                    Strings.toString(_privilegeId),
+                    '",',
+                    '"privilegeId": "',
+                    Strings.toString(_privilegeId),
+                    '",',
+                    '"description": "',
+                    privileges[_privilegeId].description,
+                    '"}'
+                )
             );
     }
 
