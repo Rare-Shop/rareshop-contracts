@@ -25,15 +25,13 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
     event RareshopCouponDeleted(uint64[] indexed couponIds);
 
     string public name;
-    string public cover;
-    address public updater;
     RareshopPlatformContract public platformCollection;
     uint64 public nextSKUId;
     uint64 public nextCouponId;
 
+    mapping (address => bool) private admins;
     mapping (uint64 => address) public skuContracts;
     mapping (address => uint64) public skuContractIds;
-
     mapping (uint64 => Coupon) public coupons;
     mapping (uint64 => mapping(address => bool)) public couponWhiteList;
     mapping (address => mapping (uint64 => uint64)) public usedCoupons;
@@ -43,8 +41,8 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
         _disableInitializers();
     }
 
-    modifier onlyUpdater() {
-        require(owner() == _msgSender() || updater == _msgSender(), "Invalid updater");
+    modifier onlyAdmin() {
+        require(owner() == _msgSender() || admins[_msgSender()], "Invalid Admin");
         _;
     }
 
@@ -66,7 +64,7 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
         string memory _name,
         string memory _symbol,
         bytes calldata _extendData
-    ) external onlyOwner returns (address) {
+    ) external onlyAdmin returns (address) {
         address skuTemplate = platformCollection.getSKUImplementationCollection(_skuType);
         require(skuTemplate != address(0), "Invalid SKU Type");
 
@@ -87,7 +85,7 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
         return skuCollection;
     }
 
-    function createCoupon(address[] memory _skuAddresses, address[] memory _whiteList, uint64 _value, uint64 _startTime, uint64 _endTime, uint64 _maxUseTimes) external onlyOwner returns (uint64) {
+    function createCoupon(address[] memory _skuAddresses, address[] memory _whiteList, uint64 _value, uint64 _startTime, uint64 _endTime, uint64 _maxUseTimes) external onlyAdmin returns (uint64) {
         require(_value > 0, "value must greater than 0");
         require(_maxUseTimes > 0, "maxUseTimes must greater than 0");
         require(_endTime == 0 || _endTime >= _startTime, "endTime must >= startTime");
@@ -152,25 +150,29 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
         return myCoupons;
     }
 
-    function deleteCoupons(uint64[] memory couponIds) external onlyOwner {
+    function deleteCoupons(uint64[] memory couponIds) external onlyAdmin {
         for(uint i = 0; i< couponIds.length; i++) {
             coupons[couponIds[i]].disable = true;
         }
         emit RareshopCouponDeleted(couponIds);
     }
 
-    function setSKUContract(address _skuAddress, uint64 _skuId) external onlyOwner {
+    function setSKUContract(address _skuAddress, uint64 _skuId) external onlyAdmin {
         require(_skuId > 0 && _skuId < nextSKUId, "skuId is illegal");
         skuContracts[_skuId] = _skuAddress;
         skuContractIds[_skuAddress] = _skuId;
     }
 
-    function setCover(string memory _cover) external onlyOwner {
-        cover = _cover;
+    function setName(string memory _name) external onlyAdmin() {
+        name = _name;
     }
 
-    function setName(string memory _name) external onlyOwner {
-        name = _name;
+    function addAdmin(address _user) external onlyOwner {
+        admins[_user] = true;
+    }
+
+    function removeAdmin(address _user) external onlyOwner {
+        admins[_user] = false;
     }
 
     function getSKUAddresses() external view returns (address[] memory) {
@@ -181,10 +183,10 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
         return skuAddresses;
     }
 
-    // todo 支持 owner(品牌方) 和 updater(平台方)
+    // todo 支持 owner(品牌方) 和 updater(平台方) becon 模式
     function _authorizeUpgrade(address newImplementation)
         internal
-        onlyUpdater
+        onlyOwner
         override
     {}
 }
