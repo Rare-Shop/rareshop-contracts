@@ -42,7 +42,7 @@ contract MetadataRenderer is IMetadataRenderer, Ownable {
         );
         bool privilegeUsed = skuContract.hasBeenExercised(
             tokenID,
-            skuContract.PRIVILEGE_ID()
+            1
         );
 
         string memory url = privilegeUsed ? privilegeUsedimageURI : imageURI;

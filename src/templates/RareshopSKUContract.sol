@@ -24,47 +24,59 @@ contract RareshopSKUContract is
 {
     using SafeERC20 for IERC20;
 
+    struct TimeRange {
+        uint64 startTime;
+        uint64 endTime;
+    }
+
+    struct Privilege {
+        string name;
+        string description;
+        bool postable;
+    }
+
     struct SKUConfig {
-        string cover;
-        uint256 supply;
-        uint256 mintPrice;
-        bool mintable;
+        uint64 supply;
         uint64 userLimit;
-        uint64 mintStartTime;
-        uint64 mintEndTime;
-        uint64 exerciseStartTime;
-        uint64 exerciseEndTime;
+        uint64 mintPrice;
+        bool mintable;
+        string cover;
+        TimeRange mintTime;
+        TimeRange exerciseTime;
+        Privilege privileges;
     }
 
     event RareshopSKUMinted(address user, uint256[] tokenIds, uint64 couponId, uint256 originPrice, uint256 finalPrice );
 
     address public metadataRenderer;
     address public privilegeMetadataRenderer;
+
+    address public constant PAYMENT_RECEIPIENT_ADDRESS = 0xC0f068774D46ba26013677b179934Efd7bdefA3F;
+    address public constant POSTAGE_RECEIPIENT_ADDRESS = 0xC0f068774D46ba26013677b179934Efd7bdefA3F;
+    address public constant USDT_ADDRESS = 0xED85184DC4BECf731358B2C63DE971856623e056;
+    address public constant USDC_ADDRESS = 0xBAfC2b82E53555ae74E1972f3F25D8a0Fc4C3682;
+
     uint256 private _nextTokenId;
-
-    address public constant PAYMENT_RECEIPIENT_ADDRESS =
-        0xC0f068774D46ba26013677b179934Efd7bdefA3F;
-    address public constant POSTAGE_RECEIPIENT_ADDRESS =
-        0xC0f068774D46ba26013677b179934Efd7bdefA3F;
-    address public constant USDT_ADDRESS =
-        0xED85184DC4BECf731358B2C63DE971856623e056;
-    address public constant USDC_ADDRESS =
-        0xBAfC2b82E53555ae74E1972f3F25D8a0Fc4C3682;
-
-    uint256 public constant PRIVILEGE_ID = 1;
     RareshopBrandContract internal brandCollection;
     SKUConfig public config;
-    uint256 public sold;
+    uint64 public sold;
+    uint256 public maxPrivilegeId;
 
-    mapping(uint256 tokenId => address to) public tokenPrivilegeAddress;
-    mapping(address to => uint256[] tokenIds) public addressPrivilegedUsedToken;
-    mapping(uint256 tokenId => uint256 postage) public postageMessage;
+    mapping(uint256 tokenId => mapping(uint256 privilegeId => address to)) privilegeExercisedAddresses;
+    mapping(uint256 tokenId => mapping(uint256 privilegeId => uint256 postage)) privilegeExercisedPostages;
+    mapping(address owner => mapping(uint256 privilegeId => uint256[] tokenIds)) addressExercisedPrivileges;
+
     mapping(address to => uint256 times) public mintTimes;
-
+    mapping(uint256 privilegeId => Privilege item) privileges;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
+    }
+
+    modifier checkPrivilegeId(uint256 _privilegeId) {
+        require(_privilegeId > 0 && _privilegeId <= maxPrivilegeId, "Invalid _privilegeId");
+        _;
     }
 
     // 部署模板时调用, name symbol 不允许修改
@@ -80,14 +92,19 @@ contract RareshopSKUContract is
         brandCollection = RareshopBrandContract(_msgSender());
         if(_extendData.length > 0) {
             config = abi.decode(_extendData, (SKUConfig));
+            // for(uint64 i=1; i<= config.privileges.length;i++){
+                // Privilege memory p = config.privileges[i-1];
+                // privileges[i] = Privilege(p.name, p.description, p.postable);
+            // }
+            // maxPrivilegeId = config.privileges.length;
         }
     }
 
         // 创建商品时调用, 所有属性都可以修改
     function updateInfo(
         string memory _cover,
-        uint256 _supply,
-        uint256 _mintPrice,
+        uint64 _supply,
+        uint64 _mintPrice,
         address _brandContract,
         bool _mintable,
         uint64 _userLimit,
@@ -101,10 +118,8 @@ contract RareshopSKUContract is
         brandCollection = RareshopBrandContract(_brandContract);
         config.mintable = _mintable;
         config.userLimit = _userLimit;
-        config.mintStartTime = _mintStartTime;
-        config.mintEndTime = _mintEndTime;
-        config.exerciseStartTime = _exerciseStartTime;
-        config.exerciseEndTime = _exerciseEndTime;
+        config.mintTime = TimeRange(_mintStartTime, _mintEndTime);
+        config.exerciseTime = TimeRange(_exerciseStartTime, _exerciseEndTime);
         return abi.encode(config);
     }
 
@@ -112,11 +127,14 @@ contract RareshopSKUContract is
         return config;
     }
 
-    function mint(address _payTokenAddress, uint256 _amounts, uint64 _couponId) external {
+    function mint(
+        address _payTokenAddress, 
+        uint256 _amounts, 
+        uint64 _couponId
+    ) external {
         require(config.mintable, "mint not available");
+        require(block.timestamp >= config.mintTime.startTime && block.timestamp <= config.mintTime.endTime, "Invalid Time Range");
         require(sold + _amounts <= config.supply, "mint amounts exceed limit");
-        require(block.timestamp >= config.mintStartTime && block.timestamp <= config.mintEndTime, "mint time not available");
-
         address sender = _msgSender();
         require(mintTimes[sender] + _amounts < config.userLimit, "user mint amounts exceed limit");
 
@@ -160,29 +178,17 @@ contract RareshopSKUContract is
         emit RareshopSKUMinted(sender, mintedTokenIds, _couponId, originPrice, payPrice);
     }
 
-    modifier checkPrivilegeId(uint256 _privilegeId) {
-        require(_privilegeId == PRIVILEGE_ID, "Invalid _privilegeId");
-        _;
-    }
-
     function exercisePrivilege(
         address _to,
         uint256 _tokenId,
         uint256 _privilegeId,
         bytes calldata _data
     ) external override checkPrivilegeId(_privilegeId) {
-        require(block.timestamp >= config.exerciseStartTime, "exercisePrivilege not start");
-        require(config.exerciseEndTime == 0 || block.timestamp <= config.exerciseEndTime, "exercisePrivilege timeout");
-
         _requireOwned(_tokenId);
+        require(block.timestamp >= config.exerciseTime.startTime && block.timestamp <= config.exerciseTime.endTime, "Invalid Time Range");
+
         address tokenOwner = _ownerOf(_tokenId);
         address sender = _msgSender();
-        (address payTokenAddress, uint256 postage) = abi.decode(
-            _data,
-            (address, uint256)
-        );
-        IERC20 erc20Token = IERC20(payTokenAddress);
-
         require(
             sender == tokenOwner,
             "Invalid address: sender must be owner of tokenID"
@@ -192,27 +198,28 @@ contract RareshopSKUContract is
             "Invalid address: _to must be owner of _tokenId"
         );
 
-        require(
-            tokenPrivilegeAddress[_tokenId] == address(0),
-            "The tokenID has been exercised"
-        );
-
-        require(
-            payTokenAddress == USDT_ADDRESS || payTokenAddress == USDC_ADDRESS,
-            "Only support USDT/USDC"
-        );
-
-        if (postage > 0) {
-            erc20Token.safeTransferFrom(
-                sender,
-                POSTAGE_RECEIPIENT_ADDRESS,
-                postage
+        if(privileges[_privilegeId].postable){
+            (address payTokenAddress, uint256 postage) = abi.decode(_data,(address, uint256));
+            require(
+                payTokenAddress == USDT_ADDRESS || payTokenAddress == USDC_ADDRESS,
+                "Only support USDT/USDC"
             );
-            postageMessage[_tokenId] = postage;
+            require(
+                privilegeExercisedAddresses[_tokenId][_privilegeId] == address(0),
+                "The tokenID has been exercised"
+            );
+            IERC20 erc20Token = IERC20(payTokenAddress);
+            if (postage > 0) {
+                erc20Token.safeTransferFrom(
+                    sender,
+                    POSTAGE_RECEIPIENT_ADDRESS,
+                    postage
+                );
+                privilegeExercisedPostages[_tokenId][_privilegeId] = postage;
+            }
+            privilegeExercisedAddresses[_tokenId][_privilegeId] == _to;
+            addressExercisedPrivileges[sender][_privilegeId].push(_tokenId);
         }
-
-        tokenPrivilegeAddress[_tokenId] = _to;
-        addressPrivilegedUsedToken[_to].push(_tokenId);
 
         emit PrivilegeExercised(sender, _to, _tokenId, _privilegeId);
     }
@@ -232,7 +239,7 @@ contract RareshopSKUContract is
 
         return
             _to == _ownerOf(_tokenId) &&
-            tokenPrivilegeAddress[_tokenId] == address(0);
+            privilegeExercisedAddresses[_tokenId][_privilegeId] == address(0);
     }
 
     function isExercised(
@@ -249,8 +256,8 @@ contract RareshopSKUContract is
         _requireOwned(_tokenId);
 
         return
-            tokenPrivilegeAddress[_tokenId] != address(0) &&
-            tokenPrivilegeAddress[_tokenId] == _to;
+            privilegeExercisedAddresses[_tokenId][_privilegeId] != address(0) &&
+            privilegeExercisedAddresses[_tokenId][_privilegeId] == _to;
     }
 
     function hasBeenExercised(
@@ -259,15 +266,17 @@ contract RareshopSKUContract is
     ) external view checkPrivilegeId(_privilegeId) returns (bool _exercised) {
         _requireOwned(_tokenId);
 
-        return tokenPrivilegeAddress[_tokenId] != address(0);
+        return privilegeExercisedAddresses[_tokenId][_privilegeId] != address(0);
     }
 
     function getPrivilegeIds(
         uint256 _tokenId
     ) external view returns (uint256[] memory privilegeIds) {
         _requireOwned(_tokenId);
-        privilegeIds = new uint256[](1);
-        privilegeIds[0] = PRIVILEGE_ID;
+        privilegeIds = new uint256[](maxPrivilegeId);
+        for(uint64 i = 1; i<= maxPrivilegeId; i++){
+            privilegeIds[i-1] = i;
+        }
     }
 
     function setMetadataRenderer(address _metadataRenderer) external onlyOwner {
