@@ -44,7 +44,7 @@ contract RareshopSKUContract is
         uint64 userLimit;
         uint64 mintPrice;
         bool mintable;
-        string cover;
+        string baseUrl;
         TimeRange mintTime;
         TimeRange exerciseTime;
     }
@@ -102,7 +102,7 @@ contract RareshopSKUContract is
 
         // 创建商品时调用, 所有属性都可以修改
     function updateInfo(
-        string memory _cover,
+        string memory _baseUrl,
         uint64 _supply,
         uint64 _mintPrice,
         address _brandContract,
@@ -112,7 +112,7 @@ contract RareshopSKUContract is
         uint64 _mintEndTime,
         uint64 _exerciseStartTime,
         uint64 _exerciseEndTime) external onlyOwner returns (bytes memory) {
-        config.cover = _cover;
+        config.baseUrl = _baseUrl;
         config.supply = _supply;
         config.mintPrice = _mintPrice;
         brandCollection = RareshopBrandContract(_brandContract);
@@ -121,6 +121,10 @@ contract RareshopSKUContract is
         config.mintTime = TimeRange(_mintStartTime, _mintEndTime);
         config.exerciseTime = TimeRange(_exerciseStartTime, _exerciseEndTime);
         return abi.encode(config);
+    }
+
+    function setBaseUrl(string memory _baseUrl) external onlyOwner {
+        config.baseUrl = _baseUrl;
     }
 
     function getConfig() external view returns(SKUConfig memory) {
@@ -297,37 +301,32 @@ contract RareshopSKUContract is
     }
 
     function tokenURIJSON(uint256 _tokenId) public view returns (string memory) {
-        string memory result = "[";
-        for(uint64 privilegeId=1; privilegeId<maxPrivilegeId;privilegeId++){
-            bool privilegeUsed = this.hasBeenExercised(_tokenId, privilegeId);
-            string memory url = privilegeUsed ? privileges[privilegeId].usedImageUrl : privileges[privilegeId].imageUrl;
-            string memory privilegeJSON = string(
+        string memory privilegeIds;
+        for(uint64 privilegeId=1; privilegeId<maxPrivilegeId;privilegeId++) {
+            if(privilegeId > 1){
+                privilegeIds = string(abi.encodePacked(privilegeIds, ",", privilegeId));
+            } else {
+                privilegeIds = string(abi.encodePacked(privilegeIds, ",", privilegeId));
+            }
+        }
+        return string(
                 abi.encodePacked(
                     "{",
                     '"name": "',
-                    privileges[privilegeId].name,
+                    this.name(),
                     " #",
                     Strings.toString(_tokenId),
                     '",',
-                    '"description": "',
-                    privileges[privilegeId].description,
-                    '",',
                     '"image": "',
-                    url,
+                    config.baseUrl, 
+                    Strings.toHexString(uint160(address(this)), 20),
+                    ".jpg",
                     '",',
-                    '"privilegeUsed": "',
-                    privilegeUsed ? "true" : "false",
+                    '"privilegeIds": "', 
+                    privilegeIds,
                     '"}'
                 )
-            );
-            if(privilegeId > 1){
-                result = string(abi.encodePacked(result,",", privilegeJSON));
-            } else {
-                result = string(abi.encodePacked(result,privilegeJSON));   
-            }
-        }
-
-        return string(abi.encodePacked(result,"]"));
+        );
     }
 
     function privilegeURI(
