@@ -15,7 +15,7 @@ contract RareshopBrandContractScript is Script {
         address platform = address(0xB30435E5c90050127088c90Aa46A7F9f5db4C6c9);
 
         address uupsProxy =
-            Upgrades.deployUUPSProxy("RareshopBrandContract.sol", abi.encodeCall(RareshopBrandContract.initialize, (platform, platform, "brandName", "brandSymbol", platform, "0x0")));
+            Upgrades.deployUUPSProxy("RareshopBrandContract.sol", abi.encodeCall(RareshopBrandContract.initialize, (platform, "brandName", "0x0")));
 
         console.log("uupsProxy deploy at %s", uupsProxy);
 

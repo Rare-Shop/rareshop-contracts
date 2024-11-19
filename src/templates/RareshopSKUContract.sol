@@ -22,9 +22,9 @@ contract RareshopSKUContract is
     OwnableUpgradeable,
     UUPSUpgradeable
 {
+    using SafeERC20 for IERC20;
+
     struct SKUConfig {
-        address brandContract;
-        string displayName;
         string cover;
         uint256 supply;
         uint256 mintPrice;
@@ -36,7 +36,8 @@ contract RareshopSKUContract is
         uint64 exerciseEndTime;
     }
 
-    using SafeERC20 for IERC20;
+    event RareshopSKUMinted(address user, uint256[] tokenIds, uint64 couponId, uint256 originPrice, uint256 finalPrice );
+
     address public metadataRenderer;
     address public privilegeMetadataRenderer;
     uint256 private _nextTokenId;
@@ -53,10 +54,12 @@ contract RareshopSKUContract is
     uint256 public constant PRIVILEGE_ID = 1;
     RareshopBrandContract internal brandCollection;
     SKUConfig public config;
+    uint256 public sold;
 
     mapping(uint256 tokenId => address to) public tokenPrivilegeAddress;
     mapping(address to => uint256[] tokenIds) public addressPrivilegedUsedToken;
     mapping(uint256 tokenId => uint256 postage) public postageMessage;
+    mapping(address to => uint256 times) public mintTimes;
 
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -73,7 +76,8 @@ contract RareshopSKUContract is
         __ERC721_init(_name, _symbol);
         __Ownable_init(_initialOwner);
         __UUPSUpgradeable_init();
-
+        
+        brandCollection = RareshopBrandContract(_msgSender());
         if(_extendData.length > 0) {
             config = abi.decode(_extendData, (SKUConfig));
         }
@@ -81,7 +85,6 @@ contract RareshopSKUContract is
 
         // 创建商品时调用, 所有属性都可以修改
     function updateInfo(
-        string memory _displayName,
         string memory _cover,
         uint256 _supply,
         uint256 _mintPrice,
@@ -92,11 +95,9 @@ contract RareshopSKUContract is
         uint64 _mintEndTime,
         uint64 _exerciseStartTime,
         uint64 _exerciseEndTime) external onlyOwner returns (bytes memory) {
-        config.displayName = _displayName;
         config.cover = _cover;
         config.supply = _supply;
         config.mintPrice = _mintPrice;
-        config.brandContract = _brandContract;
         brandCollection = RareshopBrandContract(_brandContract);
         config.mintable = _mintable;
         config.userLimit = _userLimit;
@@ -107,35 +108,31 @@ contract RareshopSKUContract is
         return abi.encode(config);
     }
 
-    modifier checkPrivilegeId(uint256 _privilegeId) {
-        require(_privilegeId == PRIVILEGE_ID, "Invalid _privilegeId");
-        _;
-    }
-
     function getConfig() external view returns(SKUConfig memory) {
         return config;
     }
 
-    function mint(address payTokenAddress, uint256 amounts, uint64 couponNumber) external {
+    function mint(address _payTokenAddress, uint256 _amounts, uint64 _couponId) external {
         require(config.mintable, "mint not available");
+        require(sold + _amounts <= config.supply, "mint amounts exceed limit");
+        require(block.timestamp >= config.mintStartTime && block.timestamp <= config.mintEndTime, "mint time not available");
+
         address sender = _msgSender();
-        require(balanceOf(sender) < config.userLimit, "balance exceed limit");
-        require(block.timestamp >= config.mintStartTime, "mint not start");
-        require(config.mintEndTime == 0 || block.timestamp <= config.mintEndTime, "mint timeout");
+        require(mintTimes[sender] + _amounts < config.userLimit, "user mint amounts exceed limit");
 
         require(
-            payTokenAddress == USDT_ADDRESS || payTokenAddress == USDC_ADDRESS,
+            _payTokenAddress == USDT_ADDRESS || _payTokenAddress == USDC_ADDRESS,
             "Only support USDT/USDC"
         );
-        require(
-            amounts > 0 && amounts <= 10000,
-            "One times max limit mint 10000"
-        );
-        
-        uint64 discountPrice = brandCollection.useCoupon(couponNumber, address(this));
-        uint256 payPrice = config.mintPrice * amounts - discountPrice; // todo 买十个可以用几张券？？
 
-        IERC20 erc20Token = IERC20(payTokenAddress);
+        uint256 originPrice = config.mintPrice * _amounts;
+        uint256 payPrice = originPrice;
+        if(_couponId > 0){
+            uint256 discountPrice = brandCollection.useCoupon(sender, _couponId, address(this));
+            payPrice = originPrice - discountPrice;
+        }
+
+        IERC20 erc20Token = IERC20(_payTokenAddress);
         require(
             erc20Token.balanceOf(sender) >= payPrice,
             "Insufficient USD balance"
@@ -151,12 +148,21 @@ contract RareshopSKUContract is
             payPrice
         );
 
-        for (uint256 i = 0; i < amounts; ) {
+        mintTimes[sender] = mintTimes[sender] + _amounts;
+        uint256[] memory mintedTokenIds = new uint256[](_amounts);
+        for (uint256 i = 0; i < _amounts; ) {
             _mint(sender, ++_nextTokenId);
+            mintedTokenIds[i] = _nextTokenId;
             unchecked {
                 ++i;
             }
         }
+        emit RareshopSKUMinted(sender, mintedTokenIds, _couponId, originPrice, payPrice);
+    }
+
+    modifier checkPrivilegeId(uint256 _privilegeId) {
+        require(_privilegeId == PRIVILEGE_ID, "Invalid _privilegeId");
+        _;
     }
 
     function exercisePrivilege(

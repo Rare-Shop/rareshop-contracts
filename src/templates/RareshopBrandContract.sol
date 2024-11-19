@@ -7,29 +7,34 @@ import "@openzeppelin/contracts/proxy/Clones.sol";
 import "../RareshopPlatformContract.sol";
 contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
     struct Coupon{
-        uint64[] skuNumbers;
+        uint64 value;
         uint64 startTime;
         uint64 endTime;
         uint64 maxUseTimes;
-        uint64 value;
-        bool enable; //禁用 + 判空
         uint64 usedTimes;
+        bool disable; 
+        bool skuLimit;
+        uint64[] skuIds;
     }
 
-    event CouponUsing(uint64 indexed CouponId, address indexed user, address indexed sku, uint64 usedTimes);
+    event RareshopSKUCreated(address indexed owner, address indexed collectionAddress, string name, string brandName);
+
+    event RareshopCouponCreated(uint64 indexed couponId, uint64 indexed value, uint64 indexed maxUseTimes,         uint64 startTime, uint64 endTime, bool skuLimit, address[] skuAddresses);
+    event RareshopCouponUsed(uint64 indexed couponId, address indexed user, address indexed sku, uint64 usedTimes);
+    event RareshopCouponDeleted(uint64[] indexed couponIds);
 
     string public name;
     string public cover;
-    address public platformCollection;
     address public updater;
-    RareshopPlatformContract public platform;
-    uint64 public nextSKUNumber;
-    uint64 public nextCouponNumber;
-    mapping (address => uint64) public skuContracts;
+    RareshopPlatformContract public platformCollection;
+    uint64 public nextSKUId;
+    uint64 public nextCouponId;
+
+    mapping (uint64 => address) public skuContracts;
+    mapping (address => uint64) public skuContractIds;
+
     mapping (uint64 => Coupon) public coupons;
     mapping (address => mapping (uint64 => uint64)) public usedCoupons;
-
-    event RareshopSKUCreated(address indexed owner, address indexed collectionAddress, string name, string brandName);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -43,21 +48,15 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
 
     function initialize(
         address _initialOwner, 
-        address _initialUpdater, 
         string memory _name, 
-        string memory _cover,
-        address _platformCollection,
         bytes calldata _extendData //暂时不用，方便后面扩展
     ) initializer external {
         __Ownable_init(_initialOwner);
         __UUPSUpgradeable_init();
-        updater = _initialUpdater;
         name = _name;
-        cover = _cover;
-        platformCollection = _platformCollection;
-        platform = RareshopPlatformContract(_platformCollection);
-        nextCouponNumber = 1;
-        nextSKUNumber = 1;
+        platformCollection = RareshopPlatformContract(_msgSender());
+        nextCouponId = 1;
+        nextSKUId = 1;
     }
 
     function createSKUCollection(
@@ -66,7 +65,7 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
         string memory _symbol,
         bytes calldata _extendData
     ) external onlyOwner returns (address) {
-        address skuTemplate = platform.getSKUImplementationCollection(_skuType);
+        address skuTemplate = platformCollection.getSKUImplementationCollection(_skuType);
         require(skuTemplate != address(0), "Invalid SKU Type");
 
         address sender = _msgSender();
@@ -81,7 +80,8 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
         } 
 
         emit RareshopSKUCreated(sender, skuCollection, _name, name);
-        skuContracts[skuCollection] = nextSKUNumber++;
+        skuContracts[nextSKUId] = skuCollection;
+        skuContractIds[skuCollection] = nextSKUId++;
         return skuCollection;
     }
 
@@ -90,38 +90,41 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
         require(_maxUseTimes > 0, "maxUseTimes must greater than 0");
         require(_endTime == 0 || _endTime >= _startTime, "endTime must >= startTime");
 
-        uint64[] memory skuNumbers = new uint64[](_skuAddresses.length);
+        uint64[] memory skuIds = new uint64[](_skuAddresses.length);
+        bool skuLimit = false;
         if(_skuAddresses.length > 0){
             for (uint i = 0; i < _skuAddresses.length; i++) {
-                uint64 skuId = skuContracts[_skuAddresses[i]];
+                uint64 skuId = skuContractIds[_skuAddresses[i]];
                 require(skuId > 0, "sku address is not available");
-                skuNumbers[i] = skuId;
+                skuIds[i] = skuId;
             }
+            skuLimit = true;
         }
 
-        Coupon memory newCoupon = Coupon(skuNumbers, _startTime, _endTime, _maxUseTimes, _value, true, 0);
-        coupons[nextCouponNumber] = newCoupon;
-        return nextCouponNumber++;
+        Coupon memory newCoupon = Coupon(_value, _startTime, _endTime, _maxUseTimes, 0, false, skuLimit, skuIds);
+        coupons[nextCouponId] = newCoupon;
+        emit RareshopCouponCreated(nextCouponId, _value, _maxUseTimes, _startTime, _endTime, skuLimit, _skuAddresses);
+        return nextCouponId++;
     }
 
-    function useCoupon(uint64 _couponNumber, address _skuAddress) external returns (uint64 value){
-        require(_couponNumber > 0, "couponNumber must greater than 0");
-        uint64 skuNumber = skuContracts[_skuAddress];
-        require(skuNumber > 0, "skuAddress not available");
-        Coupon memory coupon = coupons[_couponNumber];
-        require(coupon.enable, "couponNumber not available");
+    function useCoupon(address _user, uint64 _couponId, address _skuAddress) external returns (uint64 value){
+        require(_couponId > 0 && _couponId < nextCouponId, "couponId not available");
+
+        uint64 skuId = skuContractIds[_skuAddress];
+        require(skuId > 0, "skuAddress not available");
+        Coupon memory coupon = coupons[_couponId];
+        require(!coupon.disable, "couponId not available");
         require(coupon.startTime == 0 || coupon.startTime <= block.timestamp, "coupon time range not match");
         require(coupon.endTime == 0 || coupon.endTime >= block.timestamp, "coupon time range not match");
 
-        address sender = _msgSender();
-        uint64 usedTimes = usedCoupons[sender][_couponNumber];
+        uint64 usedTimes = usedCoupons[_user][_couponId];
         require(usedTimes < coupon.maxUseTimes, "coupon already used up");
-        usedCoupons[sender][_couponNumber] = usedTimes + 1;
+        usedCoupons[_user][_couponId] = usedTimes + 1;
 
-        if(coupon.skuNumbers.length > 0){
+        if(coupon.skuLimit){
             uint16 index = 65535;
-            for(uint16 i = 0; i < coupon.skuNumbers.length; i++){
-                if(coupon.skuNumbers[i] == skuNumber){
+            for(uint16 i = 0; i < coupon.skuIds.length; i++){
+                if(coupon.skuIds[i] == skuId){
                     index = i;
                     break;
                 }
@@ -129,13 +132,13 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
             // 使用数组，95%的场景是单个商品或者所有商品，发券时避免动态新建 mapping 
             require(index != 65535, "coupon does not match");
         }
-        emit CouponUsing(_couponNumber, sender, _skuAddress, usedCoupons[sender][_couponNumber]);
+        emit RareshopCouponUsed(_couponId, _user, _skuAddress, usedCoupons[_user][_couponId]);
         return coupon.value;
     }
 
     function getCoupons(address user) external view returns(Coupon[] memory){
-        Coupon[] memory myCoupons = new Coupon[](nextCouponNumber-1);
-        for(uint64 i=1; i< nextCouponNumber; i++){
+        Coupon[] memory myCoupons = new Coupon[](nextCouponId-1);
+        for(uint64 i=1; i< nextCouponId; i++){
             Coupon memory coupon = coupons[i];
             coupon.usedTimes = usedCoupons[user][i];
             myCoupons[i-1] = coupon;
@@ -143,19 +146,17 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
         return myCoupons;
     }
 
-    function deleteCoupons(uint64[] memory couponNumbers) external onlyOwner {
-        for(uint i = 0; i< couponNumbers.length; i++){
-            coupons[couponNumbers[i]].enable = false;
+    function deleteCoupons(uint64[] memory couponIds) external onlyOwner {
+        for(uint i = 0; i< couponIds.length; i++) {
+            coupons[couponIds[i]].disable = true;
         }
+        emit RareshopCouponDeleted(couponIds);
     }
 
-    function setPlatformCollection(address _collection) external onlyOwner {
-        platformCollection = _collection;
-        platform = RareshopPlatformContract(_collection);
-    }
-
-    function setSKUContract(address _skuAddress, uint64 _id) external onlyOwner {
-        skuContracts[_skuAddress] = _id;
+    function setSKUContract(address _skuAddress, uint64 _skuId) external onlyOwner {
+        require(_skuId > 0 && _skuId < nextSKUId, "skuId is illegal");
+        skuContracts[_skuId] = _skuAddress;
+        skuContractIds[_skuAddress] = _skuId;
     }
 
     function setCover(string memory _cover) external onlyOwner {
@@ -164,6 +165,14 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
 
     function setName(string memory _name) external onlyOwner {
         name = _name;
+    }
+
+    function getSKUAddresses() external view returns (address[] memory) {
+        address[] memory skuAddresses = new address[](nextCouponId-1);
+        for(uint64 i = 0; i < nextCouponId - 1;){
+            skuAddresses[i] = skuContracts[i+1];
+        }
+        return skuAddresses;
     }
 
     // todo 支持 owner(品牌方) 和 updater(平台方)
