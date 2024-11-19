@@ -45,7 +45,7 @@ contract RareshopSKUContract is
         TimeRange exerciseTime;
     }
 
-    event RareshopSKUMinted(address user, uint256[] tokenIds, uint64 couponId, uint256 originPrice, uint256 finalPrice );
+    event RareshopSKUMinted(address indexed user, uint256[] indexed tokenIds, uint64 indexed couponId, uint256 originPrice, uint256 finalPrice );
 
     address public metadataRenderer;
     address public privilegeMetadataRenderer;
@@ -61,12 +61,11 @@ contract RareshopSKUContract is
     uint64 public sold;
     uint256 public maxPrivilegeId;
 
+    mapping(address to => uint256 times) public mintTimes;
+    mapping(uint256 privilegeId => Privilege item) privileges;
     mapping(uint256 tokenId => mapping(uint256 privilegeId => address to)) privilegeExercisedAddresses;
     mapping(uint256 tokenId => mapping(uint256 privilegeId => uint256 postage)) privilegeExercisedPostages;
     mapping(address owner => mapping(uint256 privilegeId => uint256[] tokenIds)) addressExercisedPrivileges;
-
-    mapping(address to => uint256 times) public mintTimes;
-    mapping(uint256 privilegeId => Privilege item) privileges;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -277,6 +276,10 @@ contract RareshopSKUContract is
         for(uint64 i = 1; i<= maxPrivilegeId; i++){
             privilegeIds[i-1] = i;
         }
+    }
+
+    function setPrivilegeDescription(uint _privilegeId, string memory description) external onlyOwner checkPrivilegeId(_privilegeId){
+        privileges[_privilegeId].description = description;
     }
 
     function setMetadataRenderer(address _metadataRenderer) external onlyOwner {
