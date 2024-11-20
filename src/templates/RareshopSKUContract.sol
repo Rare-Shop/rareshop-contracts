@@ -26,11 +26,6 @@ contract RareshopSKUContract is
 {
     using SafeERC20 for IERC20;
 
-    struct TimeRange {
-        uint64 startTime;
-        uint64 endTime;
-    }
-
     struct Privilege {
         string name;
         string description;
@@ -45,11 +40,11 @@ contract RareshopSKUContract is
         uint64 mintPrice;
         bool mintable;
         string baseUrl;
-        TimeRange mintTime;
-        TimeRange exerciseTime;
+        uint64 startTime;
+        uint64 endTime;
     }
 
-    event RareshopSKUMinted(address indexed user, uint256[] indexed tokenIds, uint64 indexed couponId, uint256 originPrice, uint256 finalPrice );
+    event RareshopSKUMinted(address indexed user, uint256[] indexed tokenIds, uint256 indexed payPrice);
 
     address public constant PAYMENT_RECEIPIENT_ADDRESS = 0xC0f068774D46ba26013677b179934Efd7bdefA3F;
     address public constant POSTAGE_RECEIPIENT_ADDRESS = 0xC0f068774D46ba26013677b179934Efd7bdefA3F;
@@ -84,20 +79,23 @@ contract RareshopSKUContract is
         string memory _name,
         string memory _symbol,
         bytes calldata _configData,
-        bytes calldata _extendData) external initializer {
+        bytes calldata _privilegeData) external initializer {
         __ERC721_init(_name, _symbol);
         __Ownable_init(_initialOwner);
         __UUPSUpgradeable_init();
         
         brandCollection = RareshopBrandContract(_msgSender());
-        if(_extendData.length > 0) {
+        if(_configData.length > 0){
             config = abi.decode(_configData, (SKUConfig));
-            Privilege[] memory initPrivileges = abi.decode(_extendData, (Privilege[]));
+        }
+        if(_privilegeData.length > 0) {
+            Privilege[] memory initPrivileges = abi.decode(_privilegeData, (Privilege[]));
             for(uint64 i=1; i<= initPrivileges.length;i++){
                 privileges[i] = initPrivileges[i-1];
             }
             maxPrivilegeId = initPrivileges.length;
         }
+        require(maxPrivilegeId >= 1, "privileges can not be empty");
     }
 
         // 创建商品时调用, 所有属性都可以修改
@@ -108,18 +106,16 @@ contract RareshopSKUContract is
         address _brandContract,
         bool _mintable,
         uint64 _userLimit,
-        uint64 _mintStartTime,
-        uint64 _mintEndTime,
-        uint64 _exerciseStartTime,
-        uint64 _exerciseEndTime) external onlyOwner returns (bytes memory) {
+        uint64 _startTime,
+        uint64 _endTime) external onlyOwner returns (bytes memory) {
         config.baseUrl = _baseUrl;
         config.supply = _supply;
         config.mintPrice = _mintPrice;
         brandCollection = RareshopBrandContract(_brandContract);
         config.mintable = _mintable;
         config.userLimit = _userLimit;
-        config.mintTime = TimeRange(_mintStartTime, _mintEndTime);
-        config.exerciseTime = TimeRange(_exerciseStartTime, _exerciseEndTime);
+        config.startTime = _startTime;
+        config.endTime =  _endTime;
         return abi.encode(config);
     }
 
@@ -133,11 +129,10 @@ contract RareshopSKUContract is
 
     function mint(
         address _payTokenAddress, 
-        uint256 _amounts, 
-        uint64 _couponId
+        uint256 _amounts
     ) external {
         require(config.mintable, "mint not available");
-        require(block.timestamp >= config.mintTime.startTime && block.timestamp <= config.mintTime.endTime, "Invalid Time Range");
+        require(block.timestamp >= config.startTime && block.timestamp <= config.endTime, "Invalid Time Range");
         require(sold + _amounts <= config.supply, "mint amounts exceed limit");
         address sender = _msgSender();
         require(mintTimes[sender] + _amounts < config.userLimit, "user mint amounts exceed limit");
@@ -147,12 +142,7 @@ contract RareshopSKUContract is
             "Only support USDT/USDC"
         );
 
-        uint256 originPrice = config.mintPrice * _amounts;
-        uint256 payPrice = originPrice;
-        if(_couponId > 0){
-            uint256 discountPrice = brandCollection.useCoupon(sender, _couponId, address(this));
-            payPrice = originPrice - discountPrice;
-        }
+        uint256 payPrice = config.mintPrice * _amounts;
 
         IERC20 erc20Token = IERC20(_payTokenAddress);
         require(
@@ -179,7 +169,7 @@ contract RareshopSKUContract is
                 ++i;
             }
         }
-        emit RareshopSKUMinted(sender, mintedTokenIds, _couponId, originPrice, payPrice);
+        emit RareshopSKUMinted(sender, mintedTokenIds, payPrice);
     }
 
     function exercisePrivilege(
@@ -189,8 +179,6 @@ contract RareshopSKUContract is
         bytes calldata _data
     ) external override checkPrivilegeId(_privilegeId) {
         _requireOwned(_tokenId);
-        require(block.timestamp >= config.exerciseTime.startTime && block.timestamp <= config.exerciseTime.endTime, "Invalid Time Range");
-
         address tokenOwner = _ownerOf(_tokenId);
         address sender = _msgSender();
         require(
@@ -283,8 +271,13 @@ contract RareshopSKUContract is
         }
     }
 
-    function setPrivilegeDescription(uint _privilegeId, string memory description) external onlyOwner checkPrivilegeId(_privilegeId){
+    function setPrivilegeDescription(uint _privilegeId, string memory description) external onlyOwner checkPrivilegeId(_privilegeId) {
         privileges[_privilegeId].description = description;
+    }
+
+    function setPrice(uint64 price) external {
+        require(owner() == _msgSender() || brandCollection.isAdmin(_msgSender()), "only owner or admin could set price");
+        config.mintPrice = price;
     }
 
     function tokenURI(
@@ -301,14 +294,11 @@ contract RareshopSKUContract is
     }
 
     function tokenURIJSON(uint256 _tokenId) public view returns (string memory) {
-        string memory privilegeIds;
-        for(uint64 privilegeId=1; privilegeId<maxPrivilegeId;privilegeId++) {
-            if(privilegeId > 1){
-                privilegeIds = string(abi.encodePacked(privilegeIds, ",", privilegeId));
-            } else {
-                privilegeIds = string(abi.encodePacked(privilegeIds, ",", privilegeId));
-            }
+        bytes memory privilegeIds = abi.encodePacked("1");
+        for(uint64 privilegeId=2; privilegeId<maxPrivilegeId;privilegeId++) {
+            privilegeIds = abi.encodePacked(privilegeIds, ",", privilegeId);
         }
+
         return string(
                 abi.encodePacked(
                     "{",
@@ -323,7 +313,7 @@ contract RareshopSKUContract is
                     ".jpg",
                     '",',
                     '"privilegeIds": "', 
-                    privilegeIds,
+                    string(privilegeIds),
                     '"}'
                 )
         );
