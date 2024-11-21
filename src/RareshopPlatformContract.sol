@@ -12,7 +12,7 @@ contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
     mapping(uint256 => address) public skuImplementationTypes;
     mapping(string => address) public brandContracts;
 
-    event RareshopBrandCreated(address indexed owner, address indexed collectionAddress, uint256 collectionType, string name, string symbol);
+    event RareshopBrandCreated(address indexed owner, address indexed collectionAddress, uint256 collectionType, string name);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -31,7 +31,6 @@ contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
 
     function createBrandCollection(
         string memory _name,
-        string memory _cover,
         uint256 _collectionType,
         bytes calldata _extendData
     ) external returns (address) {
@@ -39,18 +38,18 @@ contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
         require(brandContracts[_name] == address(0), "Brand Name Already Exist");
 
         address sender = _msgSender();
-        bytes32 salt = keccak256(abi.encode(sender, _name, _cover, block.timestamp));
+        bytes32 salt = keccak256(abi.encode(sender, _name, block.timestamp));
         address brandCollection = Clones.cloneDeterministic(brandImplementationTypes[_collectionType], salt);
 
         (bool success, bytes memory returnData) = brandCollection.call(abi.encodeWithSelector(
-        0x6f7b86be, sender, _name, _cover, address(this), _extendData));
+        0x0eb624be, sender, _name, _extendData));
         if (!success) {
             assembly {
                 revert(add(returnData, 32), mload(returnData))
             }
         }
         brandContracts[_name] = brandCollection;
-        emit RareshopBrandCreated(msg.sender, brandCollection, _collectionType, _name, _cover);
+        emit RareshopBrandCreated(msg.sender, brandCollection, _collectionType, _name);
         return brandCollection;
     }
 
