@@ -12,12 +12,16 @@ contract RareshopSKUContractScript is Script {
         vm.startBroadcast(deployerPrivateKey);
 
         address owner = vm.envAddress("OWNER");
-        // address brand = address(0x58B4B418719a3557Ae0Dfc1e08063d11eD8D076A);
-        // RareshopSKUContract.OptionalFeature memory feature = RareshopSKUContract.OptionalFeature(1, true, 0, 0, 0, 0);
-        // bytes memory extendData = abi.encode(feature);
-
-        address uupsProxy =
-            Upgrades.deployUUPSProxy("RareshopSKUContract.sol", abi.encodeCall(RareshopSKUContract.initialize, (owner, "skuName", "skuSymbol", "", "")));
+        RareshopSKUContract.SKUConfig memory config = RareshopSKUContract.SKUConfig(11, 1, 1000000, 200, 201, owner, owner, true);
+        RareshopSKUContract.Privilege[] memory privileges = new RareshopSKUContract.Privilege[](2);
+        privileges[0] = RareshopSKUContract.Privilege("name1", "desc1", 1);
+        privileges[1] = RareshopSKUContract.Privilege("name2", "desc2", 0);
+        bytes memory configData = abi.encode(config);
+        bytes memory extendData = abi.encode(privileges);
+        address uupsProxy = Upgrades.deployUUPSProxy(
+            "RareshopSKUContract.sol",
+            abi.encodeCall(RareshopSKUContract.initialize, (owner, "skuName", "skuSymbol", configData, extendData))
+        );
 
         console.log("uupsProxy deploy at %s", uupsProxy);
 
