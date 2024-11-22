@@ -102,6 +102,7 @@ contract RareshopSKUContract is
         for (uint64 i = 1; i <= initPrivileges.length;) {
             privileges[i] = initPrivileges[i - 1];
             if(initPrivileges[i - 1].pType == 1){
+                require(!postable, "sku only have 1 postable privilege");
                 postable = true;
             }
             unchecked {
@@ -154,7 +155,7 @@ contract RareshopSKUContract is
         address tokenOwner = _ownerOf(_tokenId);
         address sender = _msgSender();
         require(sender == tokenOwner, "Invalid address: sender must be owner of tokenID");
-
+        require(_to == tokenOwner, "Invalid address: _to must be owner of _tokenId");
         // 可以行权时 赠送给他人么？ todo
         // require(_to == tokenOwner, "Invalid address: _to must be owner of _tokenId");
 
