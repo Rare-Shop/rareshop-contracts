@@ -27,11 +27,8 @@ contract RareshopBrandContractScript is Script {
         console.log("beaconProxy -> %s", beaconProxy);
 
         // contract upgrade
-        // Upgrades.upgradeProxy(
-        //     0x57aA394Cd408c1dB3E0De979e649e82BF8dD395F,
-        //     "RareshopBrandContract.sol",
-        //     ""
-        // );
+        // address beacon = address(0x156F45b4CEa8866AeEd05B27eB2f6ECB2bc0EBcd);
+        // Upgrades.upgradeBeacon(beacon, "RareshopBrandContractV2.sol");
 
         vm.stopBroadcast();
     }
