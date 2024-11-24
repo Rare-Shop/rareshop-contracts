@@ -6,6 +6,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 
 contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
+
     event RareshopBrandCreated(
         address indexed owner, 
         address indexed collectionAddress, 
@@ -15,6 +16,7 @@ contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
 
     mapping(uint256 => address) public brandImplementationTypes;
     mapping(uint256 => address) public skuImplementationTypes;
+    // TODO 存储brandContracts的数组，添加一次性查询所有元素的function
     mapping(string => address) public brandContracts;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -27,40 +29,47 @@ contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
         __UUPSUpgradeable_init();
     }
 
-    function createBrandCollection(string memory _name, uint256 _collectionType, bytes calldata _extendData)
+    function createBrandCollection(
+        string memory _name, 
+        uint256 _collectionType, 
+        bytes calldata _extendData
+        )
         external
         returns (address)
     {
         require(brandImplementationTypes[_collectionType] != address(0), "Invalid Implementation Type");
+        // TODO name不去重
         require(brandContracts[_name] == address(0), "Brand Name Already Exist");
 
-        address sender = _msgSender();
-        bytes32 salt = keccak256(abi.encode(sender, _name, block.timestamp));
+        bytes32 salt = keccak256(abi.encode(msg.sender, _name, block.timestamp));
         address brandCollection = Clones.cloneDeterministic(brandImplementationTypes[_collectionType], salt);
 
         (bool success, bytes memory returnData) =
-            brandCollection.call(abi.encodeWithSelector(0x0eb624be, sender, _name, _extendData));
+            // TODO 0x0eb624be 显式
+            brandCollection.call(abi.encodeWithSelector(0x0eb624be, msg.sender, _name, _extendData));
         if (!success) {
             assembly {
                 revert(add(returnData, 32), mload(returnData))
             }
         }
+
+        // TODO 存储brandContracts的数组
         brandContracts[_name] = brandCollection;
+
         emit RareshopBrandCreated(msg.sender, brandCollection, _collectionType, _name);
         return brandCollection;
-    }
-
-    function setSKUImplementationTypes(uint256 _collectionType, address _implementation) external onlyOwner {
-        skuImplementationTypes[_collectionType] = _implementation;
-    }
+    }  
 
     function setBrandImplementationTypes(uint256 _collectionType, address _implementation) external onlyOwner {
+        // TODO zero地址校验
         brandImplementationTypes[_collectionType] = _implementation;
     }
 
-    function getSKUImplementationCollection(uint256 _collectionType) external view returns(address) {
-        return skuImplementationTypes[_collectionType];
+    function setSKUImplementationTypes(uint256 _collectionType, address _implementation) external onlyOwner {
+        // TODO zero地址校验
+        skuImplementationTypes[_collectionType] = _implementation;
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
 }

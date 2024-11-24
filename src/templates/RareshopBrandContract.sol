@@ -6,21 +6,25 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 import "../RareshopPlatformContract.sol";
 
+// TODO Beacon模式，不需要UUPS
 contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
 
     event RareshopSKUCreated(
+        address indexed owner,
         address indexed skuCollectionAddress, 
-        uint64 indexed id,
-        string indexed name,
-        address owner
+        uint256 indexed skuId,
+        string name
     );
 
     string public name;
-    uint64 public nextSKUId;
+    uint256 public nextSKUId;
+
     RareshopPlatformContract public platformCollection;
 
-    mapping(uint64 => address) public skuContracts;
-    mapping(address => uint64) public skuContractIds;
+    // TODO 添加查询skuCollections的function
+    mapping(uint256 => address) public skuContracts;
+    mapping(address => uint256) public skuContractIds;
+
     mapping(address => bool) private admins;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -36,30 +40,32 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
     function initialize(
         address _initialOwner,
         string memory _name,
-        bytes calldata _extendData //暂时不用，方便后面扩展
+        bytes calldata
     ) external initializer {
         __Ownable_init(_initialOwner);
-        __UUPSUpgradeable_init();
+
         name = _name;
-        platformCollection = RareshopPlatformContract(_msgSender());
         nextSKUId = 1;
+
+        platformCollection = RareshopPlatformContract(_msgSender());
     }
 
     function createSKUCollection(
-        uint64 _skuType,
+        uint256 _skuType,
         string memory _name,
         string memory _symbol,
         bytes calldata _skuConfigData,
         bytes calldata _extendData
     ) external onlyAdmin returns (address) {
-        address skuTemplate = platformCollection.getSKUImplementationCollection(_skuType);
+        address skuTemplate = platformCollection.skuImplementationTypes(_skuType);
         require(skuTemplate != address(0), "Invalid SKU Type");
 
-        address sender = _msgSender();
-        bytes32 salt = keccak256(abi.encode(sender, _name, block.timestamp));
+        bytes32 salt = keccak256(abi.encode(msg.sender, _name, block.timestamp));
         address skuCollection = Clones.cloneDeterministic(skuTemplate, salt);
 
         (bool success, bytes memory returnData) = skuCollection.call(
+            // TODO 0x75997620 显式
+            // TODO address(this) 问题
             abi.encodeWithSelector(0x75997620, address(this), _name, _symbol, _skuConfigData, _extendData));
         if (!success) {
             assembly {
@@ -70,20 +76,22 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
         skuContracts[nextSKUId] = skuCollection;
         skuContractIds[skuCollection] = nextSKUId;
 
-        emit RareshopSKUCreated(skuCollection, nextSKUId, _name, sender);
+        emit RareshopSKUCreated(msg.sender, skuCollection, nextSKUId, _name);
         nextSKUId++;
         return skuCollection;
     }
 
+    // TODO 问题
     function updateSKUContract(address _skuAddress, bool forSale) external onlyAdmin {
         require(skuContractIds[_skuAddress] != 0, "skuAddress not exist");
-        if(forSale){
+        if (forSale) {
             skuContractIds[_skuAddress] = skuContractIds[_skuAddress] % 10000000000000000000;
         } else {
             skuContractIds[_skuAddress] = skuContractIds[_skuAddress] % 10000000000000000000 + 10000000000000000000;
         }
     }
 
+    // TODO 问题
     function setName(string memory _name) external onlyAdmin {
         name = _name;
     }
@@ -100,6 +108,7 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
         return admins[_user];
     }
 
+    // TODO 问题
     function getSKUAddresses() external view returns (address[] memory, bool[] memory) {
         address[] memory skuAddresses = new address[](nextSKUId-1);
         bool[] memory skuAddressStats = new bool[](nextSKUId-1);
@@ -114,4 +123,5 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
 }
