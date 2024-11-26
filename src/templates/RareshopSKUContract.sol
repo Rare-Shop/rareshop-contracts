@@ -71,9 +71,8 @@ contract RareshopSKUContract is
     mapping(uint256 tokenId => mapping(uint256 privilegeId => uint256 postage)) privilegeExercisedPostages;
     mapping(address owner => mapping(uint256 privilegeId => uint256[] tokenIds)) addressExercisedPrivileges;
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
-        _disableInitializers();
+        // ignore
     }
 
     modifier checkPrivilegeId(uint256 _privilegeId) {

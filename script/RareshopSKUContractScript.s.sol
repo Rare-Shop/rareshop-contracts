@@ -5,6 +5,7 @@ import "forge-std/console.sol";
 import "forge-std/Script.sol";
 import "../src/templates/RareshopSKUContract.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
+import {Options} from "openzeppelin-foundry-upgrades/Options.sol";
 
 contract RareshopSKUContractScript is Script {
     function run() external {
@@ -18,20 +19,18 @@ contract RareshopSKUContractScript is Script {
         privileges[1] = RareshopSKUContract.Privilege("name2", "desc2", 0, address(0));
         bytes memory configData = abi.encode(config);
         bytes memory extendData = abi.encode(privileges);
-        address uupsProxy = Upgrades.deployUUPSProxy(
-            "RareshopSKUContract.sol",
-            abi.encodeCall(RareshopSKUContract.initialize, (owner, "skuName", "skuSymbol", configData, extendData))
-        );
+        Options memory opts;
 
-        console.log("uupsProxy deploy at %s", uupsProxy);
+        RareshopSKUContract sku1 = new RareshopSKUContract();
+        sku1.initialize(owner, "skuName1", "sku", configData, extendData);
 
-        // contract upgrade
-        // Upgrades.upgradeProxy(
-        //     0x57aA394Cd408c1dB3E0De979e649e82BF8dD395F,
-        //     "RareshopSKUContract.sol",
-        //     ""
+        // address contractAddr = Upgrades.deployImplementation("RareshopSKUContract.sol", opts);
+        // address uupsProxy = Upgrades.deployUUPSProxy(
+            // "RareshopSKUContract.sol",
+            // abi.encodeCall(RareshopSKUContract.initialize, (owner, "skuName", "skuSymbol", configData, extendData))
         // );
 
+        // console.log("deploy at %s", sku1);
         vm.stopBroadcast();
     }
 }
