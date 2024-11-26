@@ -6,8 +6,9 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 import "../RareshopPlatformContract.sol";
 
-// TODO Beacon模式，不需要UUPS
-contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
+contract RareshopBrandContract is OwnableUpgradeable {
+    string public constant SKU_BASE_URL = "https://images.rare.shop/";
+    bytes4 private constant SKU_INIT_SELECTOR = bytes4(keccak256("initialize(address,string,string,bytes,bytes)"));
 
     event RareshopSKUCreated(
         address indexed owner,
@@ -21,7 +22,6 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
 
     RareshopPlatformContract public platformCollection;
 
-    // TODO 添加查询skuCollections的function
     mapping(uint256 => address) public skuContracts;
     mapping(address => uint256) public skuContractIds;
 
@@ -64,9 +64,7 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
         address skuCollection = Clones.cloneDeterministic(skuTemplate, salt);
 
         (bool success, bytes memory returnData) = skuCollection.call(
-            // TODO 0x75997620 显式
-            // TODO address(this) 问题
-            abi.encodeWithSelector(0x75997620, address(this), _name, _symbol, _skuConfigData, _extendData));
+            abi.encodeWithSelector(SKU_INIT_SELECTOR, address(this), _name, _symbol, _skuConfigData, _extendData));
         if (!success) {
             assembly {
                 revert(add(returnData, 32), mload(returnData))
@@ -81,21 +79,6 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
         return skuCollection;
     }
 
-    // TODO 问题
-    function updateSKUContract(address _skuAddress, bool forSale) external onlyAdmin {
-        require(skuContractIds[_skuAddress] != 0, "skuAddress not exist");
-        if (forSale) {
-            skuContractIds[_skuAddress] = skuContractIds[_skuAddress] % 10000000000000000000;
-        } else {
-            skuContractIds[_skuAddress] = skuContractIds[_skuAddress] % 10000000000000000000 + 10000000000000000000;
-        }
-    }
-
-    // TODO 问题
-    function setName(string memory _name) external onlyAdmin {
-        name = _name;
-    }
-
     function addAdmin(address _user) external onlyOwner {
         admins[_user] = true;
     }
@@ -105,23 +88,20 @@ contract RareshopBrandContract is OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function isAdmin(address _user) external view returns (bool) {
-        return admins[_user];
+        return admins[_user] || owner() == _msgSender();
     }
 
-    // TODO 问题
-    function getSKUAddresses() external view returns (address[] memory, bool[] memory) {
+    function getSKUAddresses() external view returns (address[] memory) {
         address[] memory skuAddresses = new address[](nextSKUId-1);
-        bool[] memory skuAddressStats = new bool[](nextSKUId-1);
         for (uint64 i = 1; i < nextSKUId;) {
             skuAddresses[i-1] = skuContracts[i];
-            skuAddressStats[i-1] = skuContractIds[skuContracts[i]] > 10000000000000000000;
             unchecked {
                 ++i;
             }
         }
-        return (skuAddresses, skuAddressStats);
+        return (skuAddresses);
     }
 
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+    // function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
 }

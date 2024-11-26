@@ -12,10 +12,10 @@ contract RareshopSKUContractScript is Script {
         vm.startBroadcast(deployerPrivateKey);
 
         address owner = vm.envAddress("OWNER");
-        RareshopSKUContract.SKUConfig memory config = RareshopSKUContract.SKUConfig(11, 1, 1000000, 200, 201, owner, owner, true);
+        RareshopSKUContract.SKUConfig memory config = RareshopSKUContract.SKUConfig(11, 1, 1000000, 200, 201, owner);
         RareshopSKUContract.Privilege[] memory privileges = new RareshopSKUContract.Privilege[](2);
-        privileges[0] = RareshopSKUContract.Privilege("name1", "desc1", 1);
-        privileges[1] = RareshopSKUContract.Privilege("name2", "desc2", 0);
+        privileges[0] = RareshopSKUContract.Privilege("name1", "desc1", 1, owner);
+        privileges[1] = RareshopSKUContract.Privilege("name2", "desc2", 0, address(0));
         bytes memory configData = abi.encode(config);
         bytes memory extendData = abi.encode(privileges);
         address uupsProxy = Upgrades.deployUUPSProxy(

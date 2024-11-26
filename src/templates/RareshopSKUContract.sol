@@ -14,34 +14,29 @@ import "../interfaces/IERC7765.sol";
 import "../interfaces/IERC7765Metadata.sol";
 import "./RareshopBrandContract.sol";
 
-// TODO 纯logic合约，不需要UUPS
 contract RareshopSKUContract is
     Initializable,
     ERC721Upgradeable,
     IERC7765,
     IERC7765Metadata,
-    OwnableUpgradeable,
-    UUPSUpgradeable
+    OwnableUpgradeable
 {
     using SafeERC20 for IERC20;
 
     struct Privilege {
         string name;
         string description;
-        // TODO isPostage
         uint64 pType; // 1 = postable
+        address postageReceipientAddress;
     }
 
     struct SKUConfig {
+        uint64 mintPrice;
         uint64 supply;
         uint64 userLimit;
-        uint64 mintPrice;
         uint64 startTime;
         uint64 endTime;
         address paymentReceipientAddress;
-        // TODO 放到Privilege里
-        address postageReceipientAddress;
-        bool mintable;
     }
 
     event RareshopSKUMinted (
@@ -50,17 +45,22 @@ contract RareshopSKUContract is
         uint256 mintPrice
     );
 
+    event RareshopSKUPosted (
+        address indexed to, 
+        uint256 indexed tokenId, 
+        uint256 indexed privilegeId, 
+        uint256 postage
+    );
+
     address public constant USDT_ADDRESS = 0xED85184DC4BECf731358B2C63DE971856623e056;
     address public constant USDC_ADDRESS = 0xBAfC2b82E53555ae74E1972f3F25D8a0Fc4C3682;
 
     uint256 public _nextTokenId;
     uint256 public minted;
+    bool mintable;
 
     RareshopBrandContract internal brandCollection;
     SKUConfig public config;
-
-    // TODO 可以考虑放到brand合约
-    string public constant SKU_BASE_URL = "https://images.rare.shop/";
 
     uint256 public maxPrivilegeId;
 
@@ -81,7 +81,6 @@ contract RareshopSKUContract is
         _;
     }
 
-    // TODO owner() 问题
     modifier onlyAdmin() {
         require(owner() == _msgSender() || brandCollection.isAdmin(_msgSender()), "Invalid Admin");
         _;
@@ -92,43 +91,50 @@ contract RareshopSKUContract is
         string memory _name,
         string memory _symbol,
         bytes calldata _configData,
-        bytes calldata _extendData
+        bytes calldata _privilegeData
     ) external initializer {
         __ERC721_init(_name, _symbol);
         __Ownable_init(_initialOwner);
-
+        __SKUConfig_init(_configData);
+        __PrivilegeConfig_init(_privilegeData);
         brandCollection = RareshopBrandContract(_msgSender());
-        //TODO _configData解析判断开新function
+        mintable = true;
+    }
+
+    function __SKUConfig_init(bytes calldata _configData) internal onlyInitializing {
         require(_configData.length > 0, "configData can not be empty");
-         //TODO _extendData解析判断开新function，更名_privilegeData
-        require(_extendData.length > 0, "extendData can not be empty");
-
+        
         config = abi.decode(_configData, (SKUConfig));
-        // TODO 缺失参数校验
+        require(config.supply > 0, "supply must large than 0");
+        require(config.startTime < config.endTime, "startTime must small than endTime");
+        require(config.userLimit > 0, "userLimit must large than 0");
         require(config.paymentReceipientAddress != address(0), "paymentReceipientAddress can not be empty");
+    }
 
-        Privilege[] memory initPrivileges = abi.decode(_extendData, (Privilege[]));
+    function __PrivilegeConfig_init(bytes calldata _privilegeData) internal onlyInitializing {
+        require(_privilegeData.length > 0, "_privilegeData can not be empty");
+        
+        Privilege[] memory initPrivileges = abi.decode(_privilegeData, (Privilege[]));
         bool postable = false;
         for (uint64 i = 1; i <= initPrivileges.length;) {
             privileges[i] = initPrivileges[i - 1];
             if(initPrivileges[i - 1].pType == 1){
                 require(!postable, "sku only have 1 postable privilege");
+                require(initPrivileges[i - 1].postageReceipientAddress != address(0), "postageReceipientAddress can not be empty");
                 postable = true;
             }
             unchecked {
                 ++i;
             }
         }
-        if(postable){
-            require(config.postageReceipientAddress != address(0), "postageReceipientAddress can not be empty");
-        }
 
         maxPrivilegeId = initPrivileges.length;
         require(maxPrivilegeId >= 1, "privileges can not be empty");
     }
 
+
     function mint(address _payTokenAddress, uint256 _amounts) external returns(uint256[] memory) {
-        require(config.mintable, "mint not available");
+        require(mintable, "mint not available");
         require(block.timestamp >= config.startTime && block.timestamp <= config.endTime, "Out of sell time range");
         require(minted + _amounts <= config.supply, "mint amounts exceed supply");
         
@@ -176,25 +182,39 @@ contract RareshopSKUContract is
         require(sender == tokenOwner, "Invalid address: sender must be owner of tokenID");
         require(_to == tokenOwner, "Invalid address: _to must be owner of _tokenId");
 
-        // TODO isPostage / 开新function
+
         if (privileges[_privilegeId].pType == 1) {
-            (address payTokenAddress, uint256 postage) = abi.decode(_data, (address, uint256));
-            require(payTokenAddress == USDT_ADDRESS || payTokenAddress == USDC_ADDRESS, "Only supporting USDT/USDC");
-            require(privilegeExercisedAddresses[_tokenId][_privilegeId] == address(0), "The tokenID has been exercised");
-            
-            IERC20 erc20Token = IERC20(payTokenAddress);
-            if (postage > 0) {
-                // TODO 缺失余额检测判断
-                erc20Token.safeTransferFrom(sender, config.postageReceipientAddress, postage);
-                privilegeExercisedPostages[_tokenId][_privilegeId] = postage;
-                // TODO emit一个postage event
-            }
+            post(sender, _to, _tokenId, _privilegeId, _data);
         }
 
         privilegeExercisedAddresses[_tokenId][_privilegeId] == _to;
         addressExercisedPrivileges[sender][_privilegeId].push(_tokenId);
 
         emit PrivilegeExercised(sender, _to, _tokenId, _privilegeId);
+    }
+
+    function post(
+        address _sender,
+        address _to, 
+        uint256 _tokenId, 
+        uint256 _privilegeId, 
+        bytes calldata _data
+        )
+        internal
+    {
+        (address payTokenAddress, uint256 postage) = abi.decode(_data, (address, uint256));
+        require(payTokenAddress == USDT_ADDRESS || payTokenAddress == USDC_ADDRESS, "Only supporting USDT/USDC");
+        require(privilegeExercisedAddresses[_tokenId][_privilegeId] == address(0), "The tokenID has been exercised");
+            
+        IERC20 erc20Token = IERC20(payTokenAddress);
+        if (postage > 0) {
+            require(erc20Token.balanceOf(_sender) >= postage, "Insufficient USD balance");
+            require(erc20Token.allowance(_sender, address(this)) >= postage, "Allowance not enough for USD");
+
+            erc20Token.safeTransferFrom(_sender, privileges[_privilegeId].postageReceipientAddress, postage);
+            privilegeExercisedPostages[_tokenId][_privilegeId] = postage;
+            emit RareshopSKUPosted(_to, _tokenId, _privilegeId, postage);
+        }
     }
 
     function isExercisable(address _to, uint256 _tokenId, uint256 _privilegeId)
@@ -245,33 +265,39 @@ contract RareshopSKUContract is
         }
     }
 
-    function setPrivilege(uint256 _privilegeId, string memory _description, uint64 _type)
+    function setPrivilege(uint256 _privilegeId, string memory _description)
         external
         checkPrivilegeId(_privilegeId)
         onlyAdmin
     {
         privileges[_privilegeId].description = _description;
-        // TODO 只能更改description
-        privileges[_privilegeId].pType = _type;
     }
 
-    // TODO 缺失参数校验
     function setSKUConfig(
         uint64 _supply,
         uint64 _mintPrice,
         uint64 _userLimit,
         uint64 _startTime,
         uint64 _endTime,
-        bool _mintable
+        address _paymentReceipientAddress
     ) external onlyAdmin {
-        config.supply = _supply;
+        require(_supply > 0, "supply must large than 0");
+        require(_startTime < _endTime, "startTime must small than endTime");
+        require(_userLimit > 0, "userLimit must large than 0");
+        require(_paymentReceipientAddress != address(0), "paymentReceipientAddress can not be empty");
         config.mintPrice = _mintPrice;
-        config.mintable = _mintable;
+        config.supply = _supply;
         config.userLimit = _userLimit;
         config.startTime = _startTime;
         config.endTime = _endTime;
+        config.paymentReceipientAddress = _paymentReceipientAddress;
     }
 
+    function setMintable(
+        bool _mintable
+    ) external onlyAdmin {
+        mintable = _mintable;
+    }
 
     function tokenURI(uint256 _tokenId) public view override returns (string memory) {
         _requireOwned(_tokenId);
@@ -280,15 +306,6 @@ contract RareshopSKUContract is
     }
 
     function tokenURIJSON(uint256 _tokenId) public view returns (string memory) {
-        // TODO 不需要输出privilegeIds
-        bytes memory privilegeIds = abi.encodePacked("1");
-        for (uint64 privilegeId = 2; privilegeId < maxPrivilegeId;) {
-            privilegeIds = abi.encodePacked(privilegeIds, ",", privilegeId);
-            unchecked {
-                ++privilegeId;
-            }
-        }
-
         return string(
             abi.encodePacked(
                 "{",
@@ -298,12 +315,9 @@ contract RareshopSKUContract is
                 Strings.toString(_tokenId),
                 '",',
                 '"image": "',
-                SKU_BASE_URL,
+                brandCollection.SKU_BASE_URL,
                 address(this),
                 ".png",
-                '",',
-                '"privilegeIds": "',
-                string(privilegeIds),
                 '"}'
             )
         );
@@ -342,8 +356,6 @@ contract RareshopSKUContract is
             || interfaceId == type(IERC7765Metadata).interfaceId
             || super.supportsInterface(interfaceId);
     }
-
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     function mockConfigData(
         SKUConfig memory _config,
