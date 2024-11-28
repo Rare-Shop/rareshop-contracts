@@ -2,13 +2,15 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 import "../RareshopPlatformContract.sol";
 
 contract RareshopBrandContract is OwnableUpgradeable {
+
     string public constant SKU_BASE_URL = "https://images.rare.shop/";
-    bytes4 private constant SKU_INIT_SELECTOR = bytes4(keccak256("initialize(address,string,string,bytes,bytes)"));
+
+    bytes4 private constant SKU_INIT_SELECTOR = 
+        bytes4(keccak256("initialize(address,string,string,bytes,bytes)"));
 
     event RareshopSKUCreated(
         address indexed owner,
@@ -55,7 +57,7 @@ contract RareshopBrandContract is OwnableUpgradeable {
         string memory _name,
         string memory _symbol,
         bytes calldata _skuConfigData,
-        bytes calldata _extendData
+        bytes calldata _privilegeData
     ) external onlyAdmin returns (address) {
         address skuTemplate = platformCollection.skuImplementationTypes(_skuType);
         require(skuTemplate != address(0), "Invalid SKU Type");
@@ -63,8 +65,8 @@ contract RareshopBrandContract is OwnableUpgradeable {
         bytes32 salt = keccak256(abi.encode(msg.sender, _name, block.timestamp));
         address skuCollection = Clones.cloneDeterministic(skuTemplate, salt);
 
-        (bool success, bytes memory returnData) = skuCollection.call(
-            abi.encodeWithSelector(SKU_INIT_SELECTOR, address(this), _name, _symbol, _skuConfigData, _extendData));
+        (bool success, bytes memory returnData) = skuCollection.call(abi.encodeWithSelector(
+            SKU_INIT_SELECTOR, address(this), _name, _symbol, _skuConfigData, _privilegeData));
         if (!success) {
             assembly {
                 revert(add(returnData, 32), mload(returnData))
@@ -88,20 +90,18 @@ contract RareshopBrandContract is OwnableUpgradeable {
     }
 
     function isAdmin(address _user) external view returns (bool) {
-        return admins[_user] || owner() == _msgSender();
+        return admins[_user] || owner() == _user;
     }
 
     function getSKUAddresses() external view returns (address[] memory) {
-        address[] memory skuAddresses = new address[](nextSKUId-1);
-        for (uint64 i = 1; i < nextSKUId;) {
-            skuAddresses[i-1] = skuContracts[i];
+        address[] memory skuAddresses = new address[](nextSKUId - 1);
+        for (uint256 i = 1; i < nextSKUId;) {
+            skuAddresses[i - 1] = skuContracts[i];
             unchecked {
                 ++i;
             }
         }
         return (skuAddresses);
     }
-
-    // function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
 }

@@ -1,10 +1,9 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/Base64.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -16,17 +15,17 @@ import "./RareshopBrandContract.sol";
 
 contract RareshopSKUContract is
     Initializable,
+    OwnableUpgradeable,
     ERC721Upgradeable,
     IERC7765,
-    IERC7765Metadata,
-    OwnableUpgradeable
+    IERC7765Metadata
 {
     using SafeERC20 for IERC20;
 
     struct Privilege {
         string name;
         string description;
-        uint64 pType; // 1 = postable
+        uint256 pType; // 1 = postage
         address postageReceipientAddress;
     }
 
@@ -55,24 +54,29 @@ contract RareshopSKUContract is
     address public constant USDT_ADDRESS = 0xED85184DC4BECf731358B2C63DE971856623e056;
     address public constant USDC_ADDRESS = 0xBAfC2b82E53555ae74E1972f3F25D8a0Fc4C3682;
 
-    uint256 public _nextTokenId;
     uint256 public minted;
-    bool mintable;
+    uint256 public _nextTokenId;
 
-    RareshopBrandContract internal brandCollection;
+    RareshopBrandContract public brandCollection;
+
     SKUConfig public config;
+    bool public mintable;
 
     uint256 public maxPrivilegeId;
 
     mapping(address to => uint256 amounts) public mintAmounts;
-    mapping(uint256 privilegeId => Privilege privilege) privileges;
+    mapping(uint256 privilegeId => Privilege privilege) public privileges;
 
-    mapping(uint256 tokenId => mapping(uint256 privilegeId => address to)) privilegeExercisedAddresses;
-    mapping(uint256 tokenId => mapping(uint256 privilegeId => uint256 postage)) privilegeExercisedPostages;
-    mapping(address owner => mapping(uint256 privilegeId => uint256[] tokenIds)) addressExercisedPrivileges;
+    mapping(uint256 tokenId => mapping(uint256 privilegeId => address to)) 
+        public privilegeExercisedAddresses;
+    mapping(uint256 tokenId => mapping(uint256 privilegeId => uint256 postage)) 
+        public privilegeExercisedPostages;
+    mapping(address owner => mapping(uint256 privilegeId => uint256[] tokenIds)) 
+        public addressExercisedPrivileges;
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
-        // ignore
+        _disableInitializers();
     }
 
     modifier checkPrivilegeId(uint256 _privilegeId) {
@@ -81,7 +85,7 @@ contract RareshopSKUContract is
     }
 
     modifier onlyAdmin() {
-        require(owner() == _msgSender() || brandCollection.isAdmin(_msgSender()), "Invalid Admin");
+        require(brandCollection.isAdmin(_msgSender()), "Invalid Admin");
         _;
     }
 
@@ -94,43 +98,47 @@ contract RareshopSKUContract is
     ) external initializer {
         __ERC721_init(_name, _symbol);
         __Ownable_init(_initialOwner);
+
         __SKUConfig_init(_configData);
         __PrivilegeConfig_init(_privilegeData);
+
         brandCollection = RareshopBrandContract(_msgSender());
         mintable = true;
     }
 
-    function __SKUConfig_init(bytes calldata _configData) internal onlyInitializing {
-        require(_configData.length > 0, "configData can not be empty");
+    function __SKUConfig_init(bytes calldata _configData) internal {
+        require(_configData.length > 0, "_configData can not be empty");
         
         config = abi.decode(_configData, (SKUConfig));
-        require(config.supply > 0, "supply must large than 0");
-        require(config.startTime < config.endTime, "startTime must small than endTime");
-        require(config.userLimit > 0, "userLimit must large than 0");
+        require(config.supply > 0, "supply must be larger than 0");
+        require(config.startTime < config.endTime, "startTime must be smaller than endTime");
+        require(config.userLimit > 0, "userLimit must be larger than 0");
         require(config.paymentReceipientAddress != address(0), "paymentReceipientAddress can not be empty");
     }
 
-    function __PrivilegeConfig_init(bytes calldata _privilegeData) internal onlyInitializing {
+    function __PrivilegeConfig_init(bytes calldata _privilegeData) internal {
         require(_privilegeData.length > 0, "_privilegeData can not be empty");
         
         Privilege[] memory initPrivileges = abi.decode(_privilegeData, (Privilege[]));
+        require(initPrivileges.length > 0, "privileges can not be empty");
+        maxPrivilegeId = initPrivileges.length;
+
         bool postable = false;
-        for (uint64 i = 1; i <= initPrivileges.length;) {
+
+        for (uint256 i = 1; i <= maxPrivilegeId;) {
             privileges[i] = initPrivileges[i - 1];
-            if(initPrivileges[i - 1].pType == 1){
-                require(!postable, "sku only have 1 postable privilege");
+
+            if (initPrivileges[i - 1].pType == 1) {
+                require(!postable, "Only one postage privilege can be configured");
                 require(initPrivileges[i - 1].postageReceipientAddress != address(0), "postageReceipientAddress can not be empty");
                 postable = true;
             }
+
             unchecked {
                 ++i;
             }
         }
-
-        maxPrivilegeId = initPrivileges.length;
-        require(maxPrivilegeId >= 1, "privileges can not be empty");
     }
-
 
     function mint(address _payTokenAddress, uint256 _amounts) external returns(uint256[] memory) {
         require(mintable, "mint not available");
@@ -181,13 +189,14 @@ contract RareshopSKUContract is
         require(sender == tokenOwner, "Invalid address: sender must be owner of tokenID");
         require(_to == tokenOwner, "Invalid address: _to must be owner of _tokenId");
 
+        require(privilegeExercisedAddresses[_tokenId][_privilegeId] == address(0), "The tokenID with privilegeID has been exercised");
 
         if (privileges[_privilegeId].pType == 1) {
             post(sender, _to, _tokenId, _privilegeId, _data);
         }
 
         privilegeExercisedAddresses[_tokenId][_privilegeId] == _to;
-        addressExercisedPrivileges[sender][_privilegeId].push(_tokenId);
+        addressExercisedPrivileges[_to][_privilegeId].push(_tokenId);
 
         emit PrivilegeExercised(sender, _to, _tokenId, _privilegeId);
     }
@@ -203,10 +212,9 @@ contract RareshopSKUContract is
     {
         (address payTokenAddress, uint256 postage) = abi.decode(_data, (address, uint256));
         require(payTokenAddress == USDT_ADDRESS || payTokenAddress == USDC_ADDRESS, "Only supporting USDT/USDC");
-        require(privilegeExercisedAddresses[_tokenId][_privilegeId] == address(0), "The tokenID has been exercised");
-            
-        IERC20 erc20Token = IERC20(payTokenAddress);
+
         if (postage > 0) {
+            IERC20 erc20Token = IERC20(payTokenAddress);
             require(erc20Token.balanceOf(_sender) >= postage, "Insufficient USD balance");
             require(erc20Token.allowance(_sender, address(this)) >= postage, "Allowance not enough for USD");
 
@@ -264,7 +272,7 @@ contract RareshopSKUContract is
         }
     }
 
-    function setPrivilege(uint256 _privilegeId, string memory _description)
+    function updatePrivilege(uint256 _privilegeId, string memory _description)
         external
         checkPrivilegeId(_privilegeId)
         onlyAdmin
@@ -272,7 +280,7 @@ contract RareshopSKUContract is
         privileges[_privilegeId].description = _description;
     }
 
-    function setSKUConfig(
+    function updateSKUConfig(
         uint64 _supply,
         uint64 _mintPrice,
         uint64 _userLimit,
@@ -280,10 +288,11 @@ contract RareshopSKUContract is
         uint64 _endTime,
         address _paymentReceipientAddress
     ) external onlyAdmin {
-        require(_supply > 0, "supply must large than 0");
-        require(_startTime < _endTime, "startTime must small than endTime");
-        require(_userLimit > 0, "userLimit must large than 0");
+        require(_supply > 0, "supply must be larger than 0");
+        require(_startTime < _endTime, "startTime must be smaller than endTime");
+        require(_userLimit > 0, "userLimit must be larger than 0");
         require(_paymentReceipientAddress != address(0), "paymentReceipientAddress can not be empty");
+        
         config.mintPrice = _mintPrice;
         config.supply = _supply;
         config.userLimit = _userLimit;
@@ -292,9 +301,7 @@ contract RareshopSKUContract is
         config.paymentReceipientAddress = _paymentReceipientAddress;
     }
 
-    function setMintable(
-        bool _mintable
-    ) external onlyAdmin {
+    function setMintable(bool _mintable) external onlyAdmin {
         mintable = _mintable;
     }
 
@@ -360,7 +367,7 @@ contract RareshopSKUContract is
         SKUConfig memory _config,
         Privilege[] memory _privileges
     ) external view onlyOwner returns (bytes memory, bytes memory) {
-        return (abi.encode(_config), abi.encode(_privileges));//调试时使用 todo，用完删掉
+        return (abi.encode(_config), abi.encode(_privileges)); // for debugging
     }
 
 }
