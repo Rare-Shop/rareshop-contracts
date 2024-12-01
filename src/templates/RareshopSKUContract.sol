@@ -8,6 +8,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/Base64.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 import "../interfaces/IERC7765.sol";
 import "../interfaces/IERC7765Metadata.sol";
@@ -21,6 +22,7 @@ contract RareshopSKUContract is
     IERC7765Metadata
 {
     using SafeERC20 for IERC20;
+    using MerkleProof for bytes32[];
 
     struct Privilege {
         string name;
@@ -56,8 +58,8 @@ contract RareshopSKUContract is
 
     uint256 public minted;
     uint256 public _nextTokenId;
-
     RareshopBrandContract public brandCollection;
+    bytes32 public whiteListRoot;
 
     SKUConfig public config;
     bool public mintable;
@@ -86,6 +88,11 @@ contract RareshopSKUContract is
 
     modifier onlyAdmin() {
         require(brandCollection.isAdmin(_msgSender()), "Invalid Admin");
+        _;
+    }
+
+    modifier checkWhiteList(bytes32[] memory proof) {
+        require(whiteListRoot == 0x0 || proof.verify(whiteListRoot, keccak256(abi.encodePacked(msg.sender))), "user is not in whitelist");
         _;
     }
 
@@ -140,7 +147,15 @@ contract RareshopSKUContract is
         }
     }
 
-    function mint(address _payTokenAddress, uint256 _amounts) external returns(uint256[] memory) {
+    function mint(
+        address _payTokenAddress, 
+        uint256 _amounts, 
+        bytes32[] memory whiteListProof
+        ) 
+        external 
+        checkWhiteList(whiteListProof)
+        returns(uint256[] memory) 
+    {
         require(mintable, "mint not available");
         require(block.timestamp >= config.startTime && block.timestamp <= config.endTime, "Out of sell time range");
         require(minted + _amounts <= config.supply, "mint amounts exceed supply");

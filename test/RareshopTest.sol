@@ -9,6 +9,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 contract RareshopBrandContractTest is Test {
+
     address constant OWNER_ADDRESS = 0xC565FC29F6df239Fe3848dB82656F2502286E97d;
 
     address private skuAddress;
@@ -47,8 +48,14 @@ contract RareshopBrandContractTest is Test {
     function testMint() public {
         console.log("testMint");
         vm.startPrank(OWNER_ADDRESS);
+        // bytes memory tt = 
+        // emit log_named_bytes("abi", tt); //0x31
+        bytes32  kk = keccak256(abi.encodePacked("1"));
+        emit log_named_bytes32("keccak256", kk); 
+        // console.log(string(kk));
         //     assertEq(userCoupons[0].value, 15, "coupon1 value not match");
 
         vm.stopPrank();
     }
+
 }
