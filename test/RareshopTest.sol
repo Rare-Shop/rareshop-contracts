@@ -39,22 +39,27 @@ contract RareshopBrandContractTest is Test {
     function testMint() public {
         console.log("testMint");
         vm.startPrank(OWNER_ADDRESS);
-        bytes32 computedHash = 0xb35982d74a73cde17ce7dfc2e51d05a8b40bb591e3639d4bbcd0a0a0b4c0b220;
-        bytes32[] memory proof = new bytes32[](2);
-        proof[0] = 0xb35982d74a73cde17ce7dfc2e51d05a8b40bb591e3639d4bbcd0a0a0b4c0b220;
-        proof[1] = 0xecab1131eceb01889b5c6eb028a52ae6aceb034f4c9877f9eb2537430301d6e8;
-        for (uint256 i = 0; i < proof.length; i++) {
-            computedHash = keccak256(abi.encode(computedHash, proof[i]));
-        }
+        bytes32 computedHash = keccak256(abi.encode(address(0xA6Ec99f3B80229222d5CB457370E36a3870edb06)));
         emit log_named_bytes32("computedHash = ", computedHash);
-        bytes2 b1 = 0x0100;
-        bytes2 b2 = 0x0001;
-        if(b1 > b2){
-            emit log(" > ");
-        } else{
-            emit log(" < ");
+
+        bytes32[] memory proof = new bytes32[](2);
+        proof[0] = keccak256(abi.encode(address(0xcBC1955CC42e73A0a7A0c59F6c10118D5f4e37F4)));
+        proof[1] = keccak256(abi.encode(address(0x666b088c9ABeEbb2DdEf5149b3FB3907C54b584a)));
+        for (uint256 i = 0; i < proof.length; i++) {
+            emit log_named_bytes32("1 computedHash = ", computedHash);
+            emit log_named_bytes32("2 proof = ", proof[i]);
+            emit log_named_uint("1 uint" , uint256(computedHash));
+            emit log_named_uint("2 uint" , uint256(proof[i]));
+
+            if(uint256(computedHash) < uint256(proof[i])) {
+                computedHash = keccak256(abi.encode(computedHash, proof[i]));
+            } else {
+                computedHash = keccak256(abi.encode(proof[i], computedHash));
+            }
+            emit log_named_bytes32("computedHash = ", computedHash);
         }
 
+        assertEq(computedHash, 0xede260af4e45b854a703b1aea86318427979f4d39d05b40088d3138df3db7f40, "whitelist verify failed");
         vm.stopPrank();
     }
 }

@@ -93,7 +93,11 @@ contract RareshopSKUContract is
         if(config.whiteListRoot != 0){
             bytes32 computedHash = keccak256(abi.encode(_msgSender()));
             for (uint256 i = 0; i < proof.length; i++) {
-                computedHash = keccak256(abi.encode(computedHash, proof[i]));
+                if(uint256(computedHash) < uint256(proof[i])) {
+                    computedHash = keccak256(abi.encode(computedHash, proof[i]));
+                } else {
+                    computedHash = keccak256(abi.encode(proof[i], computedHash));
+                }
             }
             require(computedHash == config.whiteListRoot, "user is not in whitelist");
         }
@@ -387,7 +391,7 @@ contract RareshopSKUContract is
     function mockConfigData(
         SKUConfig memory _config,
         Privilege[] memory _privileges
-    ) external view onlyOwner returns (bytes memory, bytes memory) {
+    ) external pure returns (bytes memory, bytes memory) {
         return (abi.encode(_config), abi.encode(_privileges)); // for debugging
     }
 
