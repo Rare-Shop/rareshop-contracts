@@ -8,7 +8,6 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/Base64.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 import "../interfaces/IERC7765.sol";
 import "../interfaces/IERC7765Metadata.sol";
@@ -22,7 +21,6 @@ contract RareshopSKUContract is
     IERC7765Metadata
 {
     using SafeERC20 for IERC20;
-    using MerkleProof for bytes32[];
 
     struct Privilege {
         string name;
@@ -38,6 +36,7 @@ contract RareshopSKUContract is
         uint64 startTime;
         uint64 endTime;
         address paymentReceipientAddress;
+        bytes32 whiteListRoot;
     }
 
     event RareshopSKUMinted (
@@ -59,7 +58,6 @@ contract RareshopSKUContract is
     uint256 public minted;
     uint256 public _nextTokenId;
     RareshopBrandContract public brandCollection;
-    bytes32 public whiteListRoot;
 
     SKUConfig public config;
     bool public mintable;
@@ -92,7 +90,13 @@ contract RareshopSKUContract is
     }
 
     modifier checkWhiteList(bytes32[] memory proof) {
-        require(whiteListRoot == 0x0 || proof.verify(whiteListRoot, keccak256(abi.encodePacked(msg.sender))), "user is not in whitelist");
+        if(config.whiteListRoot != 0){
+            bytes32 computedHash = keccak256(abi.encode(_msgSender()));
+            for (uint256 i = 0; i < proof.length; i++) {
+                computedHash = keccak256(abi.encode(computedHash, proof[i]));
+            }
+            require(computedHash == config.whiteListRoot, "user is not in whitelist");
+        }
         _;
     }
 
@@ -301,7 +305,8 @@ contract RareshopSKUContract is
         uint64 _userLimit,
         uint64 _startTime,
         uint64 _endTime,
-        address _paymentReceipientAddress
+        address _paymentReceipientAddress,
+        bytes32 _whiteListRoot
     ) external onlyAdmin {
         require(_supply > 0, "supply must be larger than 0");
         require(_startTime < _endTime, "startTime must be smaller than endTime");
@@ -314,6 +319,7 @@ contract RareshopSKUContract is
         config.startTime = _startTime;
         config.endTime = _endTime;
         config.paymentReceipientAddress = _paymentReceipientAddress;
+        config.whiteListRoot = _whiteListRoot;
     }
 
     function setMintable(bool _mintable) external onlyAdmin {
