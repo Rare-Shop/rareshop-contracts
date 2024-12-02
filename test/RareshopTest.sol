@@ -39,27 +39,54 @@ contract RareshopBrandContractTest is Test {
     function testMint() public {
         console.log("testMint");
         vm.startPrank(OWNER_ADDRESS);
-        bytes32 computedHash = keccak256(abi.encode(address(0xA6Ec99f3B80229222d5CB457370E36a3870edb06)));
-        emit log_named_bytes32("computedHash = ", computedHash);
+        bytes32[] memory proof1 = new bytes32[](3);
+        proof1[0] = 0xdf566fa427a3a8b852b8fc6c45c1518b8be786ce3df5140113b32912d4fd21da;
+        proof1[1] = 0xc3fd0f426a6ef628c5f9fe4357c45784af21da5c7a5b59926145d468dfa6f571;
+        proof1[2] = 0xf15ecfce7dfe97a35e47d492d6e49e05bf4bdfaf439a734a35a263739478de86;
+        assertEq(
+            testProof(
+                address(0xA6Ec99f3B80229222d5CB457370E36a3870edb06), 
+                proof1,
+                0x0740bf9e72ca794dadb06a1b5b3d9820e1c34337175372215bc46bc24f7380dc),
+            true,
+            "test1 failed"
+        );
 
-        bytes32[] memory proof = new bytes32[](2);
-        proof[0] = keccak256(abi.encode(address(0xcBC1955CC42e73A0a7A0c59F6c10118D5f4e37F4)));
-        proof[1] = keccak256(abi.encode(address(0x666b088c9ABeEbb2DdEf5149b3FB3907C54b584a)));
+        bytes32[] memory proof2 = new bytes32[](3);
+        proof2[0] = 0xb35982d74a73cde17ce7dfc2e51d05a8b40bb591e3639d4bbcd0a0a0b4c0b220;
+        proof2[1] = 0xc3fd0f426a6ef628c5f9fe4357c45784af21da5c7a5b59926145d468dfa6f571;
+        proof2[2] = 0xf15ecfce7dfe97a35e47d492d6e49e05bf4bdfaf439a734a35a263739478de86;
+        assertEq(
+            testProof(
+                address(0xcBC1955CC42e73A0a7A0c59F6c10118D5f4e37F4), 
+                proof2,
+                0x0740bf9e72ca794dadb06a1b5b3d9820e1c34337175372215bc46bc24f7380dc),
+            true,
+            "test2 failed"
+        );
+
+        bytes32[] memory proof3 = new bytes32[](1);
+        proof3[0] = 0x4ea0eb19361b32ef51f9d807dc1f50a197f2a2858015c5414f86baba42de0387;
+        assertEq(
+            testProof(
+                address(0x41662BAb44A6d289Fd4A58d7acEF9a3167e55b60), 
+                proof3,
+                0x0740bf9e72ca794dadb06a1b5b3d9820e1c34337175372215bc46bc24f7380dc),
+            true,
+            "test3 failed"
+        );
+        vm.stopPrank();
+    }
+
+    function testProof(address user, bytes32[] memory proof, bytes32 root) public returns(bool) {
+        bytes32 computedHash = keccak256(abi.encode(user));
         for (uint256 i = 0; i < proof.length; i++) {
-            emit log_named_bytes32("1 computedHash = ", computedHash);
-            emit log_named_bytes32("2 proof = ", proof[i]);
-            emit log_named_uint("1 uint" , uint256(computedHash));
-            emit log_named_uint("2 uint" , uint256(proof[i]));
-
             if(uint256(computedHash) < uint256(proof[i])) {
                 computedHash = keccak256(abi.encode(computedHash, proof[i]));
             } else {
                 computedHash = keccak256(abi.encode(proof[i], computedHash));
             }
-            emit log_named_bytes32("computedHash = ", computedHash);
         }
-
-        assertEq(computedHash, 0xede260af4e45b854a703b1aea86318427979f4d39d05b40088d3138df3db7f40, "whitelist verify failed");
-        vm.stopPrank();
+        return computedHash == root;
     }
 }
