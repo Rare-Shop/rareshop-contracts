@@ -78,7 +78,7 @@ contract RareshopBrandContractTest is Test {
         vm.stopPrank();
     }
 
-    function testProof(address user, bytes32[] memory proof, bytes32 root) public returns(bool) {
+    function testProof(address user, bytes32[] memory proof, bytes32 root) public pure returns(bool) {
         bytes32 computedHash = keccak256(abi.encode(user));
         for (uint256 i = 0; i < proof.length; i++) {
             if(uint256(computedHash) < uint256(proof[i])) {

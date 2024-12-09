@@ -55,14 +55,12 @@ contract RareshopSKUContract is
     address public constant USDT_ADDRESS = 0xED85184DC4BECf731358B2C63DE971856623e056;
     address public constant USDC_ADDRESS = 0xBAfC2b82E53555ae74E1972f3F25D8a0Fc4C3682;
 
+    uint256 public nextTokenId;
     uint256 public minted;
-    uint256 public _nextTokenId;
-    RareshopBrandContract public brandCollection;
-
-    SKUConfig public config;
-    bool public mintable;
-
     uint256 public maxPrivilegeId;
+    bool public mintable;
+    RareshopBrandContract public brandCollection;
+    SKUConfig public config;
 
     mapping(address to => uint256 amounts) public mintAmounts;
     mapping(uint256 privilegeId => Privilege privilege) public privileges;
@@ -99,7 +97,7 @@ contract RareshopSKUContract is
                     computedHash = keccak256(abi.encode(proof[i], computedHash));
                 }
             }
-            require(computedHash == config.whiteListRoot, "user is not in whitelist");
+            require(computedHash == config.whiteListRoot, "msgSender not in whitelist");
         }
         _;
     }
@@ -158,20 +156,20 @@ contract RareshopSKUContract is
     function mint(
         address _payTokenAddress, 
         uint256 _amounts, 
-        bytes32[] memory whiteListProof
+        bytes32[] memory _whiteListProof
         ) 
         external 
-        checkWhiteList(whiteListProof)
+        checkWhiteList(_whiteListProof)
         returns(uint256[] memory) 
     {
         require(mintable, "mint not available");
+        require(_payTokenAddress == USDT_ADDRESS || _payTokenAddress == USDC_ADDRESS, "Only supporting USDT/USDC");
         require(block.timestamp >= config.startTime && block.timestamp <= config.endTime, "Out of sell time range");
-        require(minted + _amounts <= config.supply, "mint amounts exceed supply");
+        require((minted + _amounts) <= config.supply, "mint amounts exceed supply");
         
         address sender = _msgSender();
-        require(mintAmounts[sender] + _amounts <= config.userLimit, "user mint amounts exceed limit");
+        require((mintAmounts[sender] + _amounts) <= config.userLimit, "user mint amounts exceed limit");
         
-        require(_payTokenAddress == USDT_ADDRESS || _payTokenAddress == USDC_ADDRESS, "Only supporting USDT/USDC");
         IERC20 erc20Token = IERC20(_payTokenAddress);
 
         uint256 payPrice = config.mintPrice * _amounts;
@@ -183,8 +181,8 @@ contract RareshopSKUContract is
         mintAmounts[sender] = mintAmounts[sender] + _amounts;
         uint256[] memory mintedTokenIds = new uint256[](_amounts);
         for (uint256 i = 0; i < _amounts;) {
-            _mint(sender, _nextTokenId);
-            mintedTokenIds[i] = _nextTokenId++;
+            _mint(sender, nextTokenId);
+            mintedTokenIds[i] = nextTokenId++;
             unchecked {
                 ++i;
             }
@@ -209,8 +207,8 @@ contract RareshopSKUContract is
         address tokenOwner = _ownerOf(_tokenId);
         address sender = _msgSender();
 
-        require(sender == tokenOwner, "Invalid address: sender must be owner of tokenID");
-        require(_to == tokenOwner, "Invalid address: _to must be owner of _tokenId");
+        require(sender == tokenOwner, "Invalid address: _sender must be owner of tokenID");
+        require(_to == tokenOwner, "Invalid address: _to must be owner of tokenID");
 
         require(privilegeExercisedAddresses[_tokenId][_privilegeId] == address(0), "The tokenID with privilegeID has been exercised");
 
@@ -268,8 +266,7 @@ contract RareshopSKUContract is
     {
         _requireOwned(_tokenId);
 
-        return privilegeExercisedAddresses[_tokenId][_privilegeId] != address(0)
-            && privilegeExercisedAddresses[_tokenId][_privilegeId] == _to;
+        return _to != address(0) && privilegeExercisedAddresses[_tokenId][_privilegeId] == _to;
     }
 
     function hasBeenExercised(uint256 _tokenId, uint256 _privilegeId)
@@ -369,11 +366,11 @@ contract RareshopSKUContract is
         return string(
             abi.encodePacked(
                 "{",
+                '"id": "',
+                Strings.toString(_privilegeId),
+                '",',
                 '"name": "',
                 privileges[_privilegeId].name,
-                '",',
-                '"privilegeId": "',
-                Strings.toString(_privilegeId),
                 '",',
                 '"description": "',
                 privileges[_privilegeId].description,
