@@ -41,8 +41,8 @@ contract RareshopSKUContract is
 
     event RareshopSKUMinted (
         address indexed minter, 
-        uint256[] indexed tokenIds, 
-        uint256 mintPrice
+        uint256 indexed mintPrice,
+        uint256[] tokenIds
     );
 
     event RareshopSKUPosted (
@@ -61,6 +61,7 @@ contract RareshopSKUContract is
     bool public mintable;
     RareshopBrandContract public brandCollection;
     SKUConfig public config;
+    string private thisAddr;
 
     mapping(address to => uint256 amounts) public mintAmounts;
     mapping(uint256 privilegeId => Privilege privilege) public privileges;
@@ -117,6 +118,7 @@ contract RareshopSKUContract is
 
         brandCollection = RareshopBrandContract(_msgSender());
         mintable = true;
+        thisAddr = toAsciiString(address(this));
     }
 
     function __SKUConfig_init(bytes calldata _configData) internal {
@@ -188,7 +190,7 @@ contract RareshopSKUContract is
             }
         }
 
-        emit RareshopSKUMinted(sender, mintedTokenIds, payPrice);
+        emit RareshopSKUMinted(sender, payPrice, mintedTokenIds);
         return mintedTokenIds;
     }
 
@@ -343,8 +345,8 @@ contract RareshopSKUContract is
                 Strings.toString(_tokenId),
                 '",',
                 '"image": "',
-                brandCollection.SKU_BASE_URL,
-                address(this),
+                brandCollection.SKU_BASE_URL(),
+                thisAddr,
                 ".png",
                 '"}'
             )
@@ -379,6 +381,23 @@ contract RareshopSKUContract is
         );
     }
 
+    function toAsciiString(address x) internal pure returns (string memory) {
+        bytes memory s = new bytes(40);
+        for (uint i = 0; i < 20; i++) {
+            bytes1 b = bytes1(uint8(uint(uint160(x)) / (2**(8*(19 - i)))));
+            bytes1 hi = bytes1(uint8(b) / 16);
+            bytes1 lo = bytes1(uint8(b) - 16 * uint8(hi));
+            s[2*i] = char(hi);
+            s[2*i+1] = char(lo);
+        }
+        return string(s);
+    }
+
+    function char(bytes1 b) internal pure returns (bytes1 c) {
+        if (uint8(b) < 10) return bytes1(uint8(b) + 0x30);
+        else return bytes1(uint8(b) + 0x57);
+    }
+
     function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
         return interfaceId == type(IERC7765).interfaceId 
             || interfaceId == type(IERC7765Metadata).interfaceId
@@ -391,5 +410,4 @@ contract RareshopSKUContract is
     ) external pure returns (bytes memory, bytes memory) {
         return (abi.encode(_config), abi.encode(_privileges)); // for debugging
     }
-
 }
