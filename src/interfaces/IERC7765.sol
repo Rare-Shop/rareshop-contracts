@@ -3,7 +3,7 @@ pragma solidity >=0.7.0 <0.9.0;
 
 /// @title ERC-7765 Privileged Non-Fungible Tokens Tied To Real World Assets
 /// @dev See https://eips.ethereum.org/EIPS/eip-7765
-interface IERC7765 /* is IERC721, IERC165 */ { 
+interface IERC7765 { /* is IERC721, IERC165 */
     /// @notice This event emitted when a specific privilege of a token is successfully exercised.
     /// @param _operator  the address who exercised the privilege.
     /// @param _to  the address to benefit from the privilege.

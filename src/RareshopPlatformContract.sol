@@ -5,75 +5,76 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 
-
 contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
+
+    bytes4 private constant BRAND_INIT_SELECTOR = 
+        bytes4(keccak256("initialize(address,string,bytes)"));
+
+    event RareshopBrandCreated(
+        address indexed owner, 
+        address indexed collectionAddress, 
+        uint256 collectionType, 
+        string name
+    );
 
     mapping(uint256 => address) public brandImplementationTypes;
     mapping(uint256 => address) public skuImplementationTypes;
-    mapping(string => address) public brandContracts;
 
-    event RareshopBrandCreated(address indexed owner, address indexed collectionAddress, uint256 collectionType, string name, string symbol);
+    mapping(address => string) public brandNames;
+    address[] public brandContracts;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }
 
-    function initialize(
-        address[] memory _implementations
-    ) initializer external {
-        __Ownable_init(_msgSender());
+    function initialize(address _initialOwner) external initializer {
+        __Ownable_init(_initialOwner);
         __UUPSUpgradeable_init();
-        for (uint i = 0; i < _implementations.length; i++) {
-            brandImplementationTypes[i] = _implementations[i];
-        }
     }
 
     function createBrandCollection(
-        string memory _name,
-        string memory _cover,
-        uint256 _collectionType,
+        string memory _name, 
+        uint256 _collectionType, 
         bytes calldata _extendData
-    ) external returns (address) {
+        )
+        external
+        returns (address)
+    {
         require(brandImplementationTypes[_collectionType] != address(0), "Invalid Implementation Type");
-        require(brandContracts[_name] == address(0), "Brand Name Already Exist");
 
-        address sender = _msgSender();
-        bytes32 salt = keccak256(abi.encode(sender, _name, _cover, block.timestamp));
+        bytes32 salt = keccak256(abi.encode(msg.sender, _name, block.timestamp));
         address brandCollection = Clones.cloneDeterministic(brandImplementationTypes[_collectionType], salt);
 
         (bool success, bytes memory returnData) = brandCollection.call(abi.encodeWithSelector(
-        0x6f7b86be, sender, _name, _cover, address(this), _extendData));
+            BRAND_INIT_SELECTOR, msg.sender, _name, _extendData));
         if (!success) {
             assembly {
                 revert(add(returnData, 32), mload(returnData))
             }
         }
-        brandContracts[_name] = brandCollection;
-        emit RareshopBrandCreated(msg.sender, brandCollection, _collectionType, _name, _cover);
+
+        brandNames[brandCollection] = _name;
+        brandContracts.push(brandCollection);
+
+        emit RareshopBrandCreated(msg.sender, brandCollection, _collectionType, _name);
         return brandCollection;
     }
 
-
     function setBrandImplementationTypes(uint256 _collectionType, address _implementation) external onlyOwner {
+        require(_implementation != address(0), "implementation can not be address(0)");
         brandImplementationTypes[_collectionType] = _implementation;
     }
 
-    function getBrandImplementationCollection(uint256 _collectionType) external view returns(address) {
-        return brandImplementationTypes[_collectionType];
-    }
-
     function setSKUImplementationTypes(uint256 _collectionType, address _implementation) external onlyOwner {
+        require(_implementation != address(0), "implementation can not be address(0)");
         skuImplementationTypes[_collectionType] = _implementation;
     }
 
-    function getSKUImplementationCollection(uint256 _collectionType) external view returns(address) {
-        return skuImplementationTypes[_collectionType];
+    function getBrandContracts() external view returns (address[] memory){
+        return brandContracts;
     }
 
-    function _authorizeUpgrade(address newImplementation)
-        internal
-        onlyOwner
-        override
-    {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
 }

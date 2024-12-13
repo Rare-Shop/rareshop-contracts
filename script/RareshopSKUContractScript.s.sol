@@ -11,22 +11,17 @@ contract RareshopSKUContractScript is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast(deployerPrivateKey);
 
-        address owner = vm.envAddress("OWNER");
-        // address brand = address(0x58B4B418719a3557Ae0Dfc1e08063d11eD8D076A);
-        // RareshopSKUContract.OptionalFeature memory feature = RareshopSKUContract.OptionalFeature(1, true, 0, 0, 0, 0);
-        // bytes memory extendData = abi.encode(feature);
+        RareshopSKUContract sku1 = new RareshopSKUContract();
+        console.log("deploy -> %s", address(sku1));
 
-        address uupsProxy =
-            Upgrades.deployUUPSProxy("RareshopSKUContract.sol", abi.encodeCall(RareshopSKUContract.initialize, (owner, "skuName", "skuSymbol", "")));
-
-        console.log("uupsProxy deploy at %s", uupsProxy);
-
-        // contract upgrade
-        // Upgrades.upgradeProxy(
-        //     0x57aA394Cd408c1dB3E0De979e649e82BF8dD395F,
-        //     "RareshopSKUContract.sol",
-        //     ""
-        // );
+        // address owner = vm.envAddress("OWNER");
+        // RareshopSKUContract.SKUConfig memory config = RareshopSKUContract.SKUConfig(1000000, 11, 1, 0, 9999999999, owner, 0xe58348e2b7d2f3111e238ae05ac3e379eacb42b320552514e9625837a683c34f);
+        // RareshopSKUContract.Privilege[] memory privileges = new RareshopSKUContract.Privilege[](2);
+        // privileges[0] = RareshopSKUContract.Privilege("name1", "desc1", 1, owner);
+        // privileges[1] = RareshopSKUContract.Privilege("name2", "desc2", 0, address(0));
+        // bytes memory configData = abi.encode(config);
+        // bytes memory extendData = abi.encode(privileges);
+        // sku1.initialize(owner, "skuName1", "sku", configData, extendData);
 
         vm.stopBroadcast();
     }
