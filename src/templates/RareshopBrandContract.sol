@@ -1,16 +1,14 @@
-//SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.26;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 import "../RareshopPlatformContract.sol";
+import "./RareshopSKUContract.sol";
 
 contract RareshopBrandContract is OwnableUpgradeable {
 
-    string public constant SKU_BASE_URL = "https://images.rare.shop/";
-
-    bytes4 private constant SKU_INIT_SELECTOR = 
-        bytes4(keccak256("initialize(address,string,string,bytes,bytes)"));
+    string public constant SKU_BASE_URL = "https://image.rare.shop/";
 
     event RareshopSKUCreated(
         address indexed owner,
@@ -24,8 +22,7 @@ contract RareshopBrandContract is OwnableUpgradeable {
 
     RareshopPlatformContract public platformCollection;
 
-    mapping(uint256 => address) public skuContracts;
-    mapping(address => uint256) public skuContractIds;
+    address[] public skuContracts;
 
     mapping(address => bool) private admins;
 
@@ -59,30 +56,46 @@ contract RareshopBrandContract is OwnableUpgradeable {
         bytes calldata _skuConfigData,
         bytes calldata _privilegeData
     ) 
-        external 
-        onlyAdmin 
-        returns (address) 
+        external
+        onlyAdmin
+        returns (address)
     {
-        require(platformCollection.skuImplementationTypes(_skuType) != address(0), "Invalid SKU Type");
+        address skuTemplate = platformCollection.skuImplementationTypes(_skuType);
+        require(skuTemplate != address(0), "Invalid SKU Type");
 
         address skuCollection = Clones.cloneDeterministic(
-            platformCollection.skuImplementationTypes(_skuType), 
+            skuTemplate, 
             keccak256(abi.encode(msg.sender, _name, block.timestamp))
         );
-        (bool success, bytes memory returnData) = skuCollection.call(abi.encodeWithSelector(
-            SKU_INIT_SELECTOR, address(this), _name, _symbol, _skuConfigData, _privilegeData));
+        initSKUCollection(skuCollection, _name, _symbol, _skuConfigData, _privilegeData);
+
+        skuContracts.push(skuCollection);
+        emit RareshopSKUCreated(msg.sender, skuCollection, nextSKUId, _name);
+        nextSKUId++;
+        return skuCollection;
+    }
+
+    function initSKUCollection(
+        address _skuCollection,
+        string calldata _name,
+        string calldata _symbol,
+        bytes calldata _skuConfigData,
+        bytes calldata _privilegeData
+    ) 
+        internal 
+        onlyAdmin 
+    {
+        (bool success, bytes memory returnData) = _skuCollection.call(
+            abi.encodeCall(
+                RareshopSKUContract.initialize, 
+                (_name, _symbol, _skuConfigData, _privilegeData)
+            )
+        );
         if (!success) {
             assembly {
                 revert(add(returnData, 32), mload(returnData))
             }
         }
-
-        skuContracts[nextSKUId] = skuCollection;
-        skuContractIds[skuCollection] = nextSKUId;
-
-        emit RareshopSKUCreated(msg.sender, skuCollection, nextSKUId, _name);
-        nextSKUId++;
-        return skuCollection;
     }
 
     function addAdmin(address _user) external onlyOwner {
@@ -97,15 +110,9 @@ contract RareshopBrandContract is OwnableUpgradeable {
         return admins[_user] || owner() == _user;
     }
 
+    // RPC get all sku contracts at once
     function getSKUAddresses() external view returns (address[] memory) {
-        address[] memory skuAddresses = new address[](nextSKUId - 1);
-        for (uint256 i = 1; i < nextSKUId;) {
-            skuAddresses[i - 1] = skuContracts[i];
-            unchecked {
-                ++i;
-            }
-        }
-        return (skuAddresses);
+        return skuContracts;
     }
 
 }

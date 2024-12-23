@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity >=0.7.0 <0.9.0;
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.26;
 
 /// @title ERC-7765 Privileged Non-Fungible Tokens Tied To Real World Assets
 /// @dev See https://eips.ethereum.org/EIPS/eip-7765

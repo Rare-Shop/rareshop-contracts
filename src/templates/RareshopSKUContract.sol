@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.26;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -12,10 +12,10 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "../interfaces/IERC7765.sol";
 import "../interfaces/IERC7765Metadata.sol";
 import "./RareshopBrandContract.sol";
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 contract RareshopSKUContract is
     Initializable,
-    OwnableUpgradeable,
     ERC721Upgradeable,
     IERC7765,
     IERC7765Metadata
@@ -26,7 +26,7 @@ contract RareshopSKUContract is
         string name;
         string description;
         uint256 pType; // 1 = postage
-        address postageReceipientAddress;
+        address postageRecipientAddress;
     }
 
     struct SKUConfig {
@@ -35,7 +35,7 @@ contract RareshopSKUContract is
         uint64 userLimit;
         uint64 startTime;
         uint64 endTime;
-        address paymentReceipientAddress;
+        address paymentRecipientAddress;
         bytes32 whiteListRoot;
     }
 
@@ -56,12 +56,11 @@ contract RareshopSKUContract is
     address public constant USDC_ADDRESS = 0xBAfC2b82E53555ae74E1972f3F25D8a0Fc4C3682;
 
     uint256 public nextTokenId;
-    uint256 public minted;
     uint256 public maxPrivilegeId;
     bool public mintable;
     RareshopBrandContract public brandCollection;
     SKUConfig public config;
-    string private thisAddr;
+    string public thisAddr;
 
     mapping(address to => uint256 amounts) public mintAmounts;
     mapping(uint256 privilegeId => Privilege privilege) public privileges;
@@ -88,57 +87,48 @@ contract RareshopSKUContract is
         _;
     }
 
-    modifier checkWhiteList(bytes32[] calldata proof) {
-        if(config.whiteListRoot != 0){
-            bytes32 computedHash = keccak256(abi.encode(_msgSender()));
-            for (uint256 i = 0; i < proof.length;) {
-                if(uint256(computedHash) < uint256(proof[i])) {
-                    computedHash = keccak256(abi.encode(computedHash, proof[i]));
-                } else {
-                    computedHash = keccak256(abi.encode(proof[i], computedHash));
-                }
-                unchecked {
-                    ++i;
-                }
-            }
-            require(computedHash == config.whiteListRoot, "msgSender not in whitelist");
+    modifier checkWhiteList(bytes32[] memory proof) {
+        if(config.whiteListRoot != 0) {
+            require(
+                MerkleProof.verify(proof, config.whiteListRoot, keccak256(abi.encode(_msgSender()))), 
+                "MsgSender not in whitelist"
+            );
         }
         _;
     }
 
     function initialize(
-        address _initialOwner,
         string calldata _name,
         string calldata _symbol,
         bytes calldata _configData,
         bytes calldata _privilegeData
     ) external initializer {
         __ERC721_init(_name, _symbol);
-        __Ownable_init(_initialOwner);
-
         __SKUConfig_init(_configData);
         __PrivilegeConfig_init(_privilegeData);
 
         brandCollection = RareshopBrandContract(_msgSender());
+        nextTokenId = 1;
         mintable = true;
-        thisAddr = toAsciiString(address(this));
+        thisAddr = Strings.toHexString(address(this));
     }
 
     function __SKUConfig_init(bytes calldata _configData) internal {
         require(_configData.length > 0, "_configData can not be empty");
         
         config = abi.decode(_configData, (SKUConfig));
-        require(config.supply > 0, "supply must be larger than 0");
-        require(config.startTime < config.endTime, "startTime must be smaller than endTime");
         require(config.userLimit > 0, "userLimit must be larger than 0");
-        require(config.paymentReceipientAddress != address(0), "paymentReceipientAddress can not be empty");
+        require(config.userLimit <= config.supply, "userLimit must be smaller than supply");
+        require(config.paymentRecipientAddress != address(0), "paymentRecipientAddress can not be empty");
+        require(config.startTime < config.endTime, "startTime must be smaller than endTime");
+        require(config.endTime > block.timestamp, "endTime must be larger than block.timestamp");
     }
 
     function __PrivilegeConfig_init(bytes calldata _privilegeData) internal {
         require(_privilegeData.length > 0, "_privilegeData can not be empty");
         
         Privilege[] memory initPrivileges = abi.decode(_privilegeData, (Privilege[]));
-        require(initPrivileges.length > 0, "privileges can not be empty");
+        require(initPrivileges.length > 0, "Privileges can not be empty");
         maxPrivilegeId = initPrivileges.length;
 
         bool postable = false;
@@ -148,7 +138,7 @@ contract RareshopSKUContract is
 
             if (initPrivileges[i - 1].pType == 1) {
                 require(!postable, "Only one postage privilege can be configured");
-                require(initPrivileges[i - 1].postageReceipientAddress != address(0), "postageReceipientAddress can not be empty");
+                require(initPrivileges[i - 1].postageRecipientAddress != address(0), "PostageRecipientAddress can not be empty");
                 postable = true;
             }
 
@@ -167,26 +157,26 @@ contract RareshopSKUContract is
         checkWhiteList(_whiteListProof)
         returns(uint256[] memory) 
     {
-        require(mintable, "mint not available");
+        require(mintable, "Mint not available");
         require(_payTokenAddress == USDT_ADDRESS || _payTokenAddress == USDC_ADDRESS, "Only supporting USDT/USDC");
         require(block.timestamp >= config.startTime && block.timestamp <= config.endTime, "Out of sell time range");
-        require((minted + _amounts) <= config.supply, "mint amounts exceed supply");
+        require((nextTokenId - 1 + _amounts) <= config.supply, "Mint amounts exceed supply");
         
         address sender = _msgSender();
-        require((mintAmounts[sender] + _amounts) <= config.userLimit, "user mint amounts exceed limit");
+        uint256 userMinted = mintAmounts[sender];
+        require((userMinted + _amounts) <= config.userLimit, "User mint amounts exceed limit");
+        mintAmounts[sender] = userMinted + _amounts;
         
         IERC20 erc20Token = IERC20(_payTokenAddress);
 
         uint256 payPrice = config.mintPrice * _amounts;
         require(erc20Token.balanceOf(sender) >= payPrice, "Insufficient USD balance");
         require(erc20Token.allowance(sender, address(this)) >= payPrice, "Allowance not enough for USD");
+        erc20Token.safeTransferFrom(sender, config.paymentRecipientAddress, payPrice);
 
-        erc20Token.safeTransferFrom(sender, config.paymentReceipientAddress, payPrice);
-
-        mintAmounts[sender] = mintAmounts[sender] + _amounts;
         uint256[] memory mintedTokenIds = new uint256[](_amounts);
         for (uint256 i = 0; i < _amounts;) {
-            _mint(sender, nextTokenId);
+            _safeMint(sender, nextTokenId);
             mintedTokenIds[i] = nextTokenId++;
             unchecked {
                 ++i;
@@ -244,7 +234,7 @@ contract RareshopSKUContract is
             require(erc20Token.balanceOf(_sender) >= postage, "Insufficient USD balance");
             require(erc20Token.allowance(_sender, address(this)) >= postage, "Allowance not enough for USD");
 
-            erc20Token.safeTransferFrom(_sender, privileges[_privilegeId].postageReceipientAddress, postage);
+            erc20Token.safeTransferFrom(_sender, privileges[_privilegeId].postageRecipientAddress, postage);
             privilegeExercisedPostages[_tokenId][_privilegeId] = postage;
             emit RareshopSKUPosted(_to, _tokenId, _privilegeId, postage);
         }
@@ -311,20 +301,21 @@ contract RareshopSKUContract is
         uint64 _userLimit,
         uint64 _startTime,
         uint64 _endTime,
-        address _paymentReceipientAddress,
+        address _paymentRecipientAddress,
         bytes32 _whiteListRoot
     ) external onlyAdmin {
-        require(_supply > 0, "supply must be larger than 0");
-        require(_startTime < _endTime, "startTime must be smaller than endTime");
         require(_userLimit > 0, "userLimit must be larger than 0");
-        require(_paymentReceipientAddress != address(0), "paymentReceipientAddress can not be empty");
-        
+        require(_userLimit <= _supply, "userLimit must be smaller than supply");
+        require(_paymentRecipientAddress != address(0), "paymentRecipientAddress can not be empty");
+        require(_startTime < _endTime, "startTime must be smaller than endTime");
+        require(_endTime > block.timestamp, "endTime must be larger than block.timestamp");
+
         config.mintPrice = _mintPrice;
         config.supply = _supply;
         config.userLimit = _userLimit;
         config.startTime = _startTime;
         config.endTime = _endTime;
-        config.paymentReceipientAddress = _paymentReceipientAddress;
+        config.paymentRecipientAddress = _paymentRecipientAddress;
         config.whiteListRoot = _whiteListRoot;
     }
 
@@ -388,36 +379,9 @@ contract RareshopSKUContract is
         );
     }
 
-    function toAsciiString(address x) internal pure returns (string memory) {
-        bytes memory s = new bytes(40);
-        for (uint i = 0; i < 20;) {
-            bytes1 b = bytes1(uint8(uint(uint160(x)) / (2**(8*(19 - i)))));
-            bytes1 hi = bytes1(uint8(b) / 16);
-            bytes1 lo = bytes1(uint8(b) - 16 * uint8(hi));
-            s[2*i] = char(hi);
-            s[2*i+1] = char(lo);
-            unchecked {
-                ++i;
-            }
-        }
-        return string(s);
-    }
-
-    function char(bytes1 b) internal pure returns (bytes1 c) {
-        if (uint8(b) < 10) return bytes1(uint8(b) + 0x30);
-        else return bytes1(uint8(b) + 0x57);
-    }
-
     function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
         return interfaceId == type(IERC7765).interfaceId 
             || interfaceId == type(IERC7765Metadata).interfaceId
             || super.supportsInterface(interfaceId);
-    }
-
-    function mockConfigData(
-        SKUConfig memory _config,
-        Privilege[] memory _privileges
-    ) external pure returns (bytes memory, bytes memory) {
-        return (abi.encode(_config), abi.encode(_privileges)); // for debugging
     }
 }

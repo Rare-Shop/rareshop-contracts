@@ -1,14 +1,12 @@
-//SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.26;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
+import "./templates/RareshopBrandContract.sol";
 
 contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
-
-    bytes4 private constant BRAND_INIT_SELECTOR = 
-        bytes4(keccak256("initialize(address,string,bytes)"));
 
     event RareshopBrandCreated(
         address indexed owner, 
@@ -41,13 +39,18 @@ contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
         external
         returns (address)
     {
-        require(brandImplementationTypes[_collectionType] != address(0), "Invalid Implementation Type");
+        address template = brandImplementationTypes[_collectionType];
+        require(template != address(0), "Invalid Implementation Type");
 
         bytes32 salt = keccak256(abi.encode(msg.sender, _name, block.timestamp));
-        address brandCollection = Clones.cloneDeterministic(brandImplementationTypes[_collectionType], salt);
+        address brandCollection = Clones.cloneDeterministic(template, salt);
 
-        (bool success, bytes memory returnData) = brandCollection.call(abi.encodeWithSelector(
-            BRAND_INIT_SELECTOR, msg.sender, _name, _extendData));
+        (bool success, bytes memory returnData) = brandCollection.call(
+            abi.encodeCall(
+                RareshopBrandContract.initialize, 
+                (msg.sender, _name, _extendData)
+            )
+        );
         if (!success) {
             assembly {
                 revert(add(returnData, 32), mload(returnData))
@@ -62,12 +65,12 @@ contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function setBrandImplementationTypes(uint256 _collectionType, address _implementation) external onlyOwner {
-        require(_implementation != address(0), "implementation can not be address(0)");
+        require(_implementation != address(0), "Implementation can not be address(0)");
         brandImplementationTypes[_collectionType] = _implementation;
     }
 
     function setSKUImplementationTypes(uint256 _collectionType, address _implementation) external onlyOwner {
-        require(_implementation != address(0), "implementation can not be address(0)");
+        require(_implementation != address(0), "Implementation can not be address(0)");
         skuImplementationTypes[_collectionType] = _implementation;
     }
 
