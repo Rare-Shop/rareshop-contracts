@@ -41,7 +41,7 @@ contract RareshopBrandContract is OwnableUpgradeable {
 
     function initialize(
         address _initialOwner,
-        string memory _name,
+        string calldata _name,
         bytes calldata
     ) external initializer {
         __Ownable_init(_initialOwner);
@@ -54,17 +54,21 @@ contract RareshopBrandContract is OwnableUpgradeable {
 
     function createSKUCollection(
         uint256 _skuType,
-        string memory _name,
-        string memory _symbol,
+        string calldata _name,
+        string calldata _symbol,
         bytes calldata _skuConfigData,
         bytes calldata _privilegeData
-    ) external onlyAdmin returns (address) {
-        address skuTemplate = platformCollection.skuImplementationTypes(_skuType);
-        require(skuTemplate != address(0), "Invalid SKU Type");
+    ) 
+        external 
+        onlyAdmin 
+        returns (address) 
+    {
+        require(platformCollection.skuImplementationTypes(_skuType) != address(0), "Invalid SKU Type");
 
-        bytes32 salt = keccak256(abi.encode(msg.sender, _name, block.timestamp));
-        address skuCollection = Clones.cloneDeterministic(skuTemplate, salt);
-
+        address skuCollection = Clones.cloneDeterministic(
+            platformCollection.skuImplementationTypes(_skuType), 
+            keccak256(abi.encode(msg.sender, _name, block.timestamp))
+        );
         (bool success, bytes memory returnData) = skuCollection.call(abi.encodeWithSelector(
             SKU_INIT_SELECTOR, address(this), _name, _symbol, _skuConfigData, _privilegeData));
         if (!success) {

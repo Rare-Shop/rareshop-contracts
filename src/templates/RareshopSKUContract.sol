@@ -88,14 +88,17 @@ contract RareshopSKUContract is
         _;
     }
 
-    modifier checkWhiteList(bytes32[] memory proof) {
+    modifier checkWhiteList(bytes32[] calldata proof) {
         if(config.whiteListRoot != 0){
             bytes32 computedHash = keccak256(abi.encode(_msgSender()));
-            for (uint256 i = 0; i < proof.length; i++) {
+            for (uint256 i = 0; i < proof.length;) {
                 if(uint256(computedHash) < uint256(proof[i])) {
                     computedHash = keccak256(abi.encode(computedHash, proof[i]));
                 } else {
                     computedHash = keccak256(abi.encode(proof[i], computedHash));
+                }
+                unchecked {
+                    ++i;
                 }
             }
             require(computedHash == config.whiteListRoot, "msgSender not in whitelist");
@@ -105,8 +108,8 @@ contract RareshopSKUContract is
 
     function initialize(
         address _initialOwner,
-        string memory _name,
-        string memory _symbol,
+        string calldata _name,
+        string calldata _symbol,
         bytes calldata _configData,
         bytes calldata _privilegeData
     ) external initializer {
@@ -158,7 +161,7 @@ contract RareshopSKUContract is
     function mint(
         address _payTokenAddress, 
         uint256 _amounts, 
-        bytes32[] memory _whiteListProof
+        bytes32[] calldata _whiteListProof
         ) 
         external 
         checkWhiteList(_whiteListProof)
@@ -218,7 +221,7 @@ contract RareshopSKUContract is
             post(sender, _to, _tokenId, _privilegeId, _data);
         }
 
-        privilegeExercisedAddresses[_tokenId][_privilegeId] == _to;
+        privilegeExercisedAddresses[_tokenId][_privilegeId] = _to;
         addressExercisedPrivileges[_to][_privilegeId].push(_tokenId);
 
         emit PrivilegeExercised(sender, _to, _tokenId, _privilegeId);
@@ -286,7 +289,7 @@ contract RareshopSKUContract is
         _requireOwned(_tokenId);
 
         privilegeIds = new uint256[](maxPrivilegeId);
-        for (uint64 i = 1; i <= maxPrivilegeId;) {
+        for (uint256 i = 1; i <= maxPrivilegeId;) {
             privilegeIds[i - 1] = i;
             unchecked {
                 ++i;
@@ -294,7 +297,7 @@ contract RareshopSKUContract is
         }
     }
 
-    function updatePrivilege(uint256 _privilegeId, string memory _description)
+    function updatePrivilege(uint256 _privilegeId, string calldata _description)
         external
         checkPrivilegeId(_privilegeId)
         onlyAdmin
@@ -364,7 +367,11 @@ contract RareshopSKUContract is
             Base64.encode(bytes(privilegeURIJSON(_privilegeId)))));
     }
 
-    function privilegeURIJSON(uint256 _privilegeId) public view returns (string memory) {
+    function privilegeURIJSON(uint256 _privilegeId) 
+        public 
+        view 
+        returns (string memory) 
+    {
         return string(
             abi.encodePacked(
                 "{",
@@ -383,12 +390,15 @@ contract RareshopSKUContract is
 
     function toAsciiString(address x) internal pure returns (string memory) {
         bytes memory s = new bytes(40);
-        for (uint i = 0; i < 20; i++) {
+        for (uint i = 0; i < 20;) {
             bytes1 b = bytes1(uint8(uint(uint160(x)) / (2**(8*(19 - i)))));
             bytes1 hi = bytes1(uint8(b) / 16);
             bytes1 lo = bytes1(uint8(b) - 16 * uint8(hi));
             s[2*i] = char(hi);
             s[2*i+1] = char(lo);
+            unchecked {
+                ++i;
+            }
         }
         return string(s);
     }

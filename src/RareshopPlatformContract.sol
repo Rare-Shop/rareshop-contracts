@@ -34,7 +34,7 @@ contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function createBrandCollection(
-        string memory _name, 
+        string calldata _name, 
         uint256 _collectionType, 
         bytes calldata _extendData
         )
