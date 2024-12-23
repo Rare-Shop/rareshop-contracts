@@ -55,14 +55,14 @@ contract RareshopSKUContract is
     address public constant USDT_ADDRESS = 0xED85184DC4BECf731358B2C63DE971856623e056;
     address public constant USDC_ADDRESS = 0xBAfC2b82E53555ae74E1972f3F25D8a0Fc4C3682;
 
-    uint256 public nextTokenId;
-    uint256 public maxPrivilegeId;
-    bool public mintable;
-    RareshopBrandContract public brandCollection;
-    SKUConfig public config;
-    string public thisAddr;
+    uint256 private nextTokenId;
+    string private thisAddr;
 
+    SKUConfig public config;
+    RareshopBrandContract public brandCollection;
+    bool public mintable;
     mapping(address to => uint256 amounts) public mintAmounts;
+    uint256 public maxPrivilegeId;
     mapping(uint256 privilegeId => Privilege privilege) public privileges;
 
     mapping(uint256 tokenId => mapping(uint256 privilegeId => address to)) 
