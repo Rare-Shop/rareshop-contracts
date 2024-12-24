@@ -83,7 +83,6 @@ contract RareshopBrandContract is OwnableUpgradeable {
         bytes calldata _privilegeData
     ) 
         internal 
-        onlyAdmin 
     {
         (bool success, bytes memory returnData) = _skuCollection.call(
             abi.encodeCall(
