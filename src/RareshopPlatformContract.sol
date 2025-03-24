@@ -20,6 +20,8 @@ contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
 
     mapping(address => string) public brandNames;
     address[] public brandContracts;
+    mapping(address => uint64) public platformShares;
+    address public receipientAddress;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -72,6 +74,30 @@ contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
     function setSKUImplementationTypes(uint256 _collectionType, address _implementation) external onlyOwner {
         require(_implementation != address(0), "Implementation can not be address(0)");
         skuImplementationTypes[_collectionType] = _implementation;
+    }
+
+    function setReceipientAddress(address _receipientAddress) external onlyOwner {
+        require(_receipientAddress != address(0), "_receipientAddress can not be address(0)");
+        receipientAddress = _receipientAddress;
+    }
+
+    function setPlatformShare(address _brand, uint64 percentage) external onlyOwner {
+        require(bytes(brandNames[_brand]).length > 0, "_brand not exist");
+        require(percentage <= 10000, "percentage over limit");
+        platformShares[_brand] = percentage;
+    }
+
+    function getPlatformShare(address _brand) external view returns (uint64 percentage){
+        require(bytes(brandNames[_brand]).length > 0, "_brand not exist");
+        if(platformShares[_brand] == 0){
+            // default 5%
+            return 500;
+        } else if(platformShares[_brand] == 99999){
+            // special case: 0%
+            return 0;
+        } else {
+            return platformShares[_brand];
+        }
     }
 
     function getBrandContracts() external view returns (address[] memory){

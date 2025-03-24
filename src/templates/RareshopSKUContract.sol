@@ -26,7 +26,7 @@ contract RareshopSKUContract is
         string name;
         string description;
         uint256 pType; // 1 = postage
-        address postageRecipientAddress;
+        address postageReceipientAddress;
     }
 
     struct SKUConfig {
@@ -35,7 +35,7 @@ contract RareshopSKUContract is
         uint64 userLimit;
         uint64 startTime;
         uint64 endTime;
-        address paymentRecipientAddress;
+        address paymentReceipientAddress;
         bytes32 whiteListRoot;
     }
 
@@ -56,10 +56,11 @@ contract RareshopSKUContract is
     address public constant USDC_ADDRESS = 0xBAfC2b82E53555ae74E1972f3F25D8a0Fc4C3682;
 
     uint256 private nextTokenId;
+    RareshopBrandContract public brandCollection;
+    address public brandCollectionAddr;
     string private thisAddr;
 
     SKUConfig public config;
-    RareshopBrandContract public brandCollection;
     bool public mintable;
     mapping(address to => uint256 amounts) public mintAmounts;
     uint256 public maxPrivilegeId;
@@ -107,8 +108,9 @@ contract RareshopSKUContract is
         __SKUConfig_init(_configData);
         __PrivilegeConfig_init(_privilegeData);
 
-        brandCollection = RareshopBrandContract(_msgSender());
         nextTokenId = 1;
+        brandCollectionAddr = _msgSender();
+        brandCollection = RareshopBrandContract(brandCollectionAddr);
         mintable = true;
         thisAddr = Strings.toHexString(address(this));
     }
@@ -119,7 +121,7 @@ contract RareshopSKUContract is
         config = abi.decode(_configData, (SKUConfig));
         require(config.userLimit > 0, "userLimit must be larger than 0");
         require(config.userLimit <= config.supply, "userLimit must be smaller than supply");
-        require(config.paymentRecipientAddress != address(0), "paymentRecipientAddress can not be empty");
+        require(config.paymentReceipientAddress != address(0), "paymentReceipientAddress can not be empty");
         require(config.startTime < config.endTime, "startTime must be smaller than endTime");
         require(config.endTime > block.timestamp, "endTime must be larger than block.timestamp");
     }
@@ -138,7 +140,7 @@ contract RareshopSKUContract is
 
             if (initPrivileges[i - 1].pType == 1) {
                 require(!postable, "Only one postage privilege can be configured");
-                require(initPrivileges[i - 1].postageRecipientAddress != address(0), "PostageRecipientAddress can not be empty");
+                require(initPrivileges[i - 1].postageReceipientAddress != address(0), "PostageReceipientAddress can not be empty");
                 postable = true;
             }
 
@@ -169,11 +171,29 @@ contract RareshopSKUContract is
         
         IERC20 erc20Token = IERC20(_payTokenAddress);
 
-        uint256 payPrice = config.mintPrice * _amounts;
-        require(erc20Token.balanceOf(sender) >= payPrice, "Insufficient USD balance");
-        require(erc20Token.allowance(sender, address(this)) >= payPrice, "Allowance not enough for USD");
-        erc20Token.safeTransferFrom(sender, config.paymentRecipientAddress, payPrice);
 
+        uint256 payPriceAll = config.mintPrice * _amounts;
+        require(erc20Token.balanceOf(sender) >= payPriceAll, "Insufficient USD balance");
+        require(erc20Token.allowance(sender, address(this)) >= payPriceAll, "Allowance not enough for USD");
+
+        uint256 platformShare = payPriceAll * brandCollection.platformCollection().getPlatformShare(brandCollectionAddr) / 10000;
+        if(platformShare > 0) {
+            erc20Token.safeTransferFrom(
+                sender, 
+                brandCollection.platformCollection().receipientAddress(), 
+                platformShare
+            );
+        }
+        uint256 payPrice = payPriceAll - platformShare;
+        if(payPrice > 0) {
+            erc20Token.safeTransferFrom(
+                sender,
+                config.paymentReceipientAddress,
+                payPrice
+            );
+        }
+
+        mintAmounts[sender] = mintAmounts[sender] + _amounts;
         uint256[] memory mintedTokenIds = new uint256[](_amounts);
         for (uint256 i = 0; i < _amounts;) {
             _safeMint(sender, nextTokenId);
@@ -234,7 +254,7 @@ contract RareshopSKUContract is
             require(erc20Token.balanceOf(_sender) >= postage, "Insufficient USD balance");
             require(erc20Token.allowance(_sender, address(this)) >= postage, "Allowance not enough for USD");
 
-            erc20Token.safeTransferFrom(_sender, privileges[_privilegeId].postageRecipientAddress, postage);
+            erc20Token.safeTransferFrom(_sender, privileges[_privilegeId].postageReceipientAddress, postage);
             privilegeExercisedPostages[_tokenId][_privilegeId] = postage;
             emit RareshopSKUPosted(_to, _tokenId, _privilegeId, postage);
         }
@@ -301,12 +321,12 @@ contract RareshopSKUContract is
         uint64 _userLimit,
         uint64 _startTime,
         uint64 _endTime,
-        address _paymentRecipientAddress,
+        address _paymentReceipientAddress,
         bytes32 _whiteListRoot
     ) external onlyAdmin {
         require(_userLimit > 0, "userLimit must be larger than 0");
         require(_userLimit <= _supply, "userLimit must be smaller than supply");
-        require(_paymentRecipientAddress != address(0), "paymentRecipientAddress can not be empty");
+        require(_paymentReceipientAddress != address(0), "paymentReceipientAddress can not be empty");
         require(_startTime < _endTime, "startTime must be smaller than endTime");
         require(_endTime > block.timestamp, "endTime must be larger than block.timestamp");
 
@@ -315,7 +335,7 @@ contract RareshopSKUContract is
         config.userLimit = _userLimit;
         config.startTime = _startTime;
         config.endTime = _endTime;
-        config.paymentRecipientAddress = _paymentRecipientAddress;
+        config.paymentReceipientAddress = _paymentReceipientAddress;
         config.whiteListRoot = _whiteListRoot;
     }
 

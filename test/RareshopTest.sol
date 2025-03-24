@@ -54,7 +54,7 @@ contract RareshopBrandContractTest is Test {
             userLimit:1,
             startTime:0,
             endTime:9999999999,
-            paymentRecipientAddress:OWNER_ADDRESS,
+            paymentReceipientAddress:OWNER_ADDRESS,
             whiteListRoot:0x0000000000000000000000000000000000000000000000000000000000000000
         });
         RareshopSKUContract.Privilege[] memory privileges = new RareshopSKUContract.Privilege[](2);
@@ -106,7 +106,7 @@ contract RareshopBrandContractTest is Test {
             userLimit:2,
             startTime:1,
             endTime:9999999998,
-            paymentRecipientAddress:address(0x666b088c9ABeEbb2DdEf5149b3FB3907C54b584a),
+            paymentReceipientAddress:address(0x666b088c9ABeEbb2DdEf5149b3FB3907C54b584a),
             whiteListRoot:0xe58348e2b7d2f3111e238ae05ac3e379eacb42b320552514e9625837a683c34f
         });
         skuInstance.updateSKUConfig(
@@ -115,7 +115,7 @@ contract RareshopBrandContractTest is Test {
             config2.userLimit, 
             config2.startTime, 
             config2.endTime, 
-            config2.paymentRecipientAddress, 
+            config2.paymentReceipientAddress, 
             config2.whiteListRoot
         );
         checkSKUConfig(config2);
@@ -129,13 +129,13 @@ contract RareshopBrandContractTest is Test {
     // }
 
     function checkSKUConfig(RareshopSKUContract.SKUConfig memory config) internal view {
-        (uint64 mintPrice, uint64 supply, uint64 userLimit, uint64 startTime, uint64 endTime, address paymentRecipientAddress, bytes32 whiteListRoot) = skuInstance.config();
+        (uint64 mintPrice, uint64 supply, uint64 userLimit, uint64 startTime, uint64 endTime, address paymentReceipientAddress, bytes32 whiteListRoot) = skuInstance.config();
         assertEq(config.mintPrice, mintPrice, "mintPrice err");
         assertEq(config.supply, supply, "supply err");
         assertEq(config.userLimit, userLimit, "userLimit err");
         assertEq(config.startTime, startTime, "startTime err");
         assertEq(config.endTime, endTime, "endTime err");
-        assertEq(config.paymentRecipientAddress, paymentRecipientAddress, "paymentRecipientAddress err");
+        assertEq(config.paymentReceipientAddress, paymentReceipientAddress, "paymentReceipientAddress err");
         assertEq(config.whiteListRoot, whiteListRoot, "whiteListRoot err");
     }
 
@@ -144,7 +144,7 @@ contract RareshopBrandContractTest is Test {
         assertEq(privilege.name, name, "name err");
         assertEq(privilege.description, description, "description err");
         assertEq(privilege.pType, pType, "pType err");
-        assertEq(privilege.postageRecipientAddress, pAddr, "pAddr err");
+        assertEq(privilege.postageReceipientAddress, pAddr, "pAddr err");
     }
 
     function testWhitelist() public {

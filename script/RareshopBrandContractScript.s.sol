@@ -24,18 +24,18 @@ contract RareshopBrandContractScript is Script {
         address beaconProxy = Upgrades.deployBeaconProxy(beacon, data);
         console.log("beaconProxy -> %s", beaconProxy);
 
-        address cloneBrandProxy = Clones.cloneDeterministic(
-            beaconProxy,
-            keccak256(abi.encode("cloneBrandProxy"))
-        );
+        // address cloneBrandProxy = Clones.cloneDeterministic(
+        //     beaconProxy,
+        //     keccak256(abi.encode("cloneBrandProxy"))
+        // );
 
-        address cloneBrandProxy2 = Clones.cloneDeterministic(
-            beaconProxy,
-            keccak256(abi.encode("cloneBrandProxy2"))
-        );
+        // console.log("cloneBrandProxy -> %s", cloneBrandProxy);
+        // address cloneBrandProxy2 = Clones.cloneDeterministic(
+        //     beaconProxy,
+        //     keccak256(abi.encode("cloneBrandProxy2"))
+        // );
 
-        console.log("cloneBrandProxy -> %s", cloneBrandProxy);
-        console.log("cloneBrandProxy2 -> %s", cloneBrandProxy2);
+        // console.log("cloneBrandProxy2 -> %s", cloneBrandProxy2);
 
         // upgrade contract by beacon
         // address beacon = address(0x6cc2246ae83b026394d16EFca5f3bE76c7961d11);
