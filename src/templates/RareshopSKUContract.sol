@@ -60,6 +60,7 @@ contract RareshopSKUContract is
     uint256 public maxPrivilegeId;
     bool public mintable;
     RareshopBrandContract public brandCollection;
+    address public brandCollectionAddr;
     SKUConfig public config;
     string private thisAddr;
 
@@ -118,8 +119,8 @@ contract RareshopSKUContract is
 
         __SKUConfig_init(_configData);
         __PrivilegeConfig_init(_privilegeData);
-
-        brandCollection = RareshopBrandContract(_msgSender());
+        brandCollectionAddr = _msgSender();
+        brandCollection = RareshopBrandContract(brandCollectionAddr);
         mintable = true;
         thisAddr = toAsciiString(address(this));
     }
@@ -177,11 +178,26 @@ contract RareshopSKUContract is
         
         IERC20 erc20Token = IERC20(_payTokenAddress);
 
-        uint256 payPrice = config.mintPrice * _amounts;
-        require(erc20Token.balanceOf(sender) >= payPrice, "Insufficient USD balance");
-        require(erc20Token.allowance(sender, address(this)) >= payPrice, "Allowance not enough for USD");
+        uint256 payPriceAll = config.mintPrice * _amounts;
+        require(erc20Token.balanceOf(sender) >= payPriceAll, "Insufficient USD balance");
+        require(erc20Token.allowance(sender, address(this)) >= payPriceAll, "Allowance not enough for USD");
 
-        erc20Token.safeTransferFrom(sender, config.paymentReceipientAddress, payPrice);
+        uint256 platformShare = payPriceAll * brandCollection.platformCollection().getPlatformShare(brandCollectionAddr) / 10000;
+        if(platformShare > 0) {
+            erc20Token.safeTransferFrom(
+                sender, 
+                brandCollection.platformCollection().receipientAddress(), 
+                platformShare
+            );
+        }
+        uint256 payPrice = payPriceAll - platformShare;
+        if(payPrice > 0) {
+            erc20Token.safeTransferFrom(
+                sender,
+                config.paymentReceipientAddress,
+                payPrice
+            );
+        }
 
         mintAmounts[sender] = mintAmounts[sender] + _amounts;
         uint256[] memory mintedTokenIds = new uint256[](_amounts);
