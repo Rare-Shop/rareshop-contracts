@@ -6,6 +6,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 import "./templates/RareshopBrandContract.sol";
 
+
 contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
 
     event RareshopBrandCreated(
@@ -31,6 +32,8 @@ contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
     function initialize(address _initialOwner) external initializer {
         __Ownable_init(_initialOwner);
         __UUPSUpgradeable_init();
+        
+        receipientAddress = _initialOwner;
     }
 
     function createBrandCollection(
@@ -83,7 +86,7 @@ contract RareshopPlatformContract is OwnableUpgradeable, UUPSUpgradeable {
 
     function setPlatformShare(address _brand, uint64 percentage) external onlyOwner {
         require(bytes(brandNames[_brand]).length > 0, "_brand not exist");
-        require(percentage <= 10000, "percentage over limit");
+        require(percentage == 99999 || percentage <= 10000, "percentage over limit");
         platformShares[_brand] = percentage;
     }
 

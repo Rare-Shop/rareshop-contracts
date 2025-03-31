@@ -5,6 +5,7 @@ import "forge-std/console.sol";
 import "forge-std/Script.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 import "../src/RareshopPlatformContract.sol";
+import "../src/RareshopPlatformContractV2.sol";
 
 contract RareshopPlatformContractScript is Script {
     function run() external {
@@ -12,16 +13,16 @@ contract RareshopPlatformContractScript is Script {
         vm.startBroadcast(deployerPrivateKey);
         address owner = vm.envAddress("OWNER");
 
-        address factoryProxy = Upgrades.deployUUPSProxy(
-            "RareshopPlatformContract.sol", abi.encodeCall(RareshopPlatformContract.initialize, owner)
-        );
-        console.log("factoryProxy -> %s", factoryProxy);
-
-        // Upgrades.upgradeProxy(
-        // 0xfEcb1A0dc9D120942421f7369f2839c9615047C3,
-        // "RareshopPlatformContract.sol",
-        // ""
+        // address factoryProxy = Upgrades.deployUUPSProxy(
+        //     "RareshopPlatformContract.sol", abi.encodeCall(RareshopPlatformContract.initialize, owner)
         // );
+        // console.log("factoryProxy -> %s", factoryProxy);
+
+        Upgrades.upgradeProxy(
+        0xdeb905f0841beC44FE0611522dB90874f2a1d7fB,
+        "RareshopPlatformContractV2.sol",
+        ""
+        );
         vm.stopBroadcast();
     }
 }
